@@ -1,69 +1,73 @@
 <?php
-session_start();
-require 'config/db.php';
-require 'config/auth.php';
+require __DIR__ . '/config/auth.php';
+startSecureSession();
 
-if (isset($_SESSION['user_id'])) {
-    header('Location: ' . roleHome($_SESSION['role']));
-    exit;
-}
-
-// CSRF token
-if (empty($_SESSION['csrf'])) {
-    $_SESSION['csrf'] = bin2hex(random_bytes(32));
+if (currentUser()) {
+    redirect(roleHome($_SESSION['role']));
 }
 
 $error = '';
-$username = '';
+$identifier = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? '';
+if (isPost()) {
+    $identifier = trim((string)($_POST['identifier'] ?? ''));
+    $password   = (string)($_POST['password'] ?? '');
+    $ip         = clientIp();
 
-    if (!hash_equals($_SESSION['csrf'], $_POST['csrf'] ?? '')) {
-        $error = 'Session expired. Reload the page and try again.';
-    } elseif ($username === '' || $password === '') {
-        $error = 'Enter your username and password.';
+    if (!verifyCsrf()) {
+        $error = 'Your session expired. Please try again.';
+    } elseif ($identifier === '' || $password === '') {
+        $error = 'Enter your username or email and your password.';
+    } elseif (isLockedOut($identifier, $ip)) {
+        $error = 'Too many failed attempts. Try again in ' . LOCKOUT_MINUTES . ' minutes.';
     } else {
-        $stmt = $pdo->prepare('SELECT id, username, password, role FROM users WHERE username = ? OR email = ? LIMIT 1');
-        $stmt->execute([$username, $username]);
-        $user = $stmt->fetch();
+        $st = db()->prepare('SELECT id, username, password, role, is_active FROM users WHERE username = ? OR email = ? LIMIT 1');
+        $st->execute([$identifier, $identifier]);
+        $user = $st->fetch();
 
-        if ($user && password_verify($password, $user['password'])) {
-            session_regenerate_id(true);
-            $_SESSION['user_id']  = $user['id'];
-            $_SESSION['username'] = $user['username'];
-            $_SESSION['role']     = $user['role'];
-            header('Location: ' . roleHome($user['role']));
-            exit;
+        $valid = password_verify($password, $user['password'] ?? DUMMY_HASH) && $user;
+        if (!$valid) {
+            recordLoginAttempt($identifier, $ip, false);
+            $error = 'Wrong username or password.';
+        } elseif ((int)$user['is_active'] !== 1) {
+            $error = 'This account is disabled. Contact the Association Officer.';
+        } else {
+            recordLoginAttempt($identifier, $ip, true);
+            if (password_needs_rehash($user['password'], PASSWORD_DEFAULT)) {
+                db()->prepare('UPDATE users SET password = ? WHERE id = ?')
+                    ->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
+            }
+            loginUser($user);
+            redirect(roleHome($user['role']));
         }
-        $error = 'Wrong username or password.';
     }
 }
+$notices = takeFlashes();
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Log in</title>
+    <title>Log in - TRODDAC</title>
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
     <main class="card">
-        <h1>Welcome back</h1>
+        <h1>TRODDAC</h1>
         <p class="sub">Log in to continue.</p>
 
-        <?php if ($error): ?>
-            <div class="alert" role="alert"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
+        <?php foreach ($notices as $n): ?>
+            <div class="alert <?= $n['type'] === 'success' ? 'ok' : '' ?>" role="status"><?= e($n['message']) ?></div>
+        <?php endforeach; ?>
+        <?php if ($error): ?><div class="alert" role="alert"><?= e($error) ?></div><?php endif; ?>
 
         <form id="loginForm" method="POST" action="login.php" novalidate>
-            <input type="hidden" name="csrf" value="<?= $_SESSION['csrf'] ?>">
+            <?= csrfField() ?>
 
-            <label for="username">Username or email</label>
-            <input type="text" id="username" name="username" value="<?= htmlspecialchars($username) ?>" autocomplete="username" required>
-            <small class="field-error" id="usernameError"></small>
+            <label for="identifier">Username or email</label>
+            <input type="text" id="identifier" name="identifier" value="<?= e($identifier) ?>" autocomplete="username" required>
+            <small class="field-error" id="identifierError"></small>
 
             <label for="password">Password</label>
             <div class="pw-wrap">
@@ -75,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit" class="btn">Log in</button>
         </form>
 
-        <p class="foot">No account yet? <a href="register.php">Create one</a></p>
+        <p class="foot">New passenger? <a href="register.php">Create an account</a></p>
     </main>
     <script src="assets/js/script.js"></script>
 </body>

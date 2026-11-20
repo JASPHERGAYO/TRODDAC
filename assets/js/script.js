@@ -1,5 +1,6 @@
+// Show/hide password + simple client-side checks (PHP validates again on the server).
 const form = document.getElementById('loginForm');
-const username = document.getElementById('username');
+const identifier = document.getElementById('identifier');
 const password = document.getElementById('password');
 const toggle = document.getElementById('togglePw');
 
@@ -8,31 +9,18 @@ function setError(input, message) {
     input.classList.toggle('invalid', Boolean(message));
 }
 
-// Show / hide password
-toggle.addEventListener('click', () => {
+toggle?.addEventListener('click', () => {
     const hidden = password.type === 'password';
     password.type = hidden ? 'text' : 'password';
     toggle.textContent = hidden ? 'Hide' : 'Show';
     toggle.setAttribute('aria-label', hidden ? 'Hide password' : 'Show password');
 });
 
-// Client-side check before the form goes to PHP (PHP still validates again)
-form.addEventListener('submit', (e) => {
+form?.addEventListener('submit', (e) => {
     let valid = true;
-
-    if (username.value.trim() === '') {
-        setError(username, 'Enter your username or email.');
-        valid = false;
-    } else {
-        setError(username, '');
-    }
-
-    if (password.value === '') {
-        setError(password, 'Enter your password.');
-        valid = false;
-    } else {
-        setError(password, '');
-    }
-
+    if (identifier.value.trim() === '') { setError(identifier, 'Enter your username or email.'); valid = false; }
+    else { setError(identifier, ''); }
+    if (password.value === '') { setError(password, 'Enter your password.'); valid = false; }
+    else { setError(password, ''); }
     if (!valid) e.preventDefault();
 });

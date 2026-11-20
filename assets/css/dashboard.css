@@ -99,3 +99,26 @@ tbody tr:hover { background: rgba(255,255,255,.5); }
 @media (prefers-reduced-motion: no-preference) {
     .side-nav a, tbody tr { transition: background .15s, color .15s; }
 }
+/* ---------- TRODDAC additions ---------- */
+.role-officer { --accent: #4f6cf0; --accent-soft: #e3e8fe; }
+.pill.officer { background: #e3e8fe; color: #4155d6; }
+.pill.off { background: #eceff3; color: #5d6b7a; }
+
+.flash { padding: .8rem 1rem; font-size: .92rem; }
+.flash.success { color: #146c43; background: rgba(231, 245, 238, .85); }
+.flash.error   { color: #b42318; background: rgba(253, 236, 235, .9); }
+.flash.info    { color: #1858bd; background: rgba(224, 237, 255, .9); }
+
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 4px 14px; }
+.form-grid label { margin-top: .6rem; }
+.panel form .btn { width: auto; display: inline-block; padding: .65rem 1.4rem; margin-top: 1rem; }
+.inline-form { display: inline; }
+.small-btn.danger { background: #b42318; }
+.small-btn.ghost  { background: rgba(255,255,255,.8); color: var(--accent); border: 1px solid var(--line); }
+.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.toolbar input { max-width: 320px; }
+.hint { color: var(--muted); font-size: .85rem; margin: .4rem 0 0; }
+.mono { font-family: ui-monospace, Consolas, monospace; }
+.logout-form { margin-left: auto; }
+.logout-form button { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 4px; display: grid; place-items: center; }
+.logout-form button:hover { color: var(--accent); }

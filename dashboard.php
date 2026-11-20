@@ -1,8 +1,4 @@
 <?php
-require 'config/auth.php';
-if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php');
-    exit;
-}
-header('Location: ' . roleHome($_SESSION['role']));
-exit;
+require __DIR__ . '/config/auth.php';
+$user = requireLogin();
+redirect(roleHome($user['role']));

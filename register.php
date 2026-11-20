@@ -1,40 +1,39 @@
 <?php
-session_start();
-require 'config/db.php';
+require __DIR__ . '/config/auth.php';
+startSecureSession();
+
+if (currentUser()) {
+    redirect(roleHome($_SESSION['role']));
+}
 
 $error = '';
-$success = '';
-$username = $email = '';
-$role = 'passenger';
-$publicRoles = ['passenger', 'driver', 'operator']; // admin can never be self-registered
+$old = ['full_name' => '', 'username' => '', 'email' => '', 'phone' => ''];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username'] ?? '');
-    $email    = trim($_POST['email'] ?? '');
-    $password = $_POST['password'] ?? '';
-    $confirm  = $_POST['confirm'] ?? '';
-    $role     = $_POST['role'] ?? '';
+if (isPost()) {
+    foreach ($old as $key => $_) {
+        $old[$key] = trim((string)($_POST[$key] ?? ''));
+    }
+    $password = (string)($_POST['password'] ?? '');
+    $confirm  = (string)($_POST['confirm'] ?? '');
 
-    if ($username === '' || $email === '' || $password === '') {
-        $error = 'Fill in all fields.';
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Enter a valid email address.';
-    } elseif (strlen($password) < 6) {
-        $error = 'Password must be at least 6 characters.';
-    } elseif (!in_array($role, $publicRoles, true)) {
-        $error = 'Choose a valid role.';
+    if (!verifyCsrf()) {
+        $error = 'Your session expired. Please try again.';
+    } elseif (($msg = validateNewAccount($old['full_name'], $old['username'], $old['email'], $old['phone'])) !== null) {
+        $error = $msg;
+    } elseif (($msg = validatePassword($password)) !== null) {
+        $error = $msg;
     } elseif ($password !== $confirm) {
         $error = 'Passwords do not match.';
     } else {
-        $check = $pdo->prepare('SELECT id FROM users WHERE username = ? OR email = ?');
-        $check->execute([$username, $email]);
-        if ($check->fetch()) {
-            $error = 'That username or email is already taken.';
-        } else {
-            $ins = $pdo->prepare('INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)');
-            $ins->execute([$username, $email, password_hash($password, PASSWORD_DEFAULT), $role]);
-            $success = 'Account created. You can log in now.';
-            $username = $email = '';
+        try {
+            // Self-registration always creates a PASSENGER. The role is never read from the form.
+            db()->prepare('INSERT INTO users (username, email, password, full_name, phone, role) VALUES (?,?,?,?,?,?)')
+                ->execute([$old['username'], $old['email'], password_hash($password, PASSWORD_DEFAULT),
+                           $old['full_name'], $old['phone'] !== '' ? $old['phone'] : null, 'passenger']);
+            flash('success', 'Account created. You can log in now.');
+            redirect('login.php');
+        } catch (PDOException $e) {
+            $error = duplicateMessage($e) ?? 'Could not create the account. Please try again.';
         }
     }
 }
@@ -44,36 +43,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Create account</title>
+    <title>Create account - TRODDAC</title>
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
     <main class="card">
         <h1>Create account</h1>
-        <p class="sub">It takes a few seconds.</p>
+        <p class="sub">Passenger registration. Drivers and operators are added by the Association Officer.</p>
 
-        <?php if ($error): ?><div class="alert" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-        <?php if ($success): ?><div class="alert ok"><?= htmlspecialchars($success) ?></div><?php endif; ?>
+        <?php if ($error): ?><div class="alert" role="alert"><?= e($error) ?></div><?php endif; ?>
 
         <form method="POST" action="register.php">
+            <?= csrfField() ?>
+            <label for="full_name">Full name</label>
+            <input type="text" id="full_name" name="full_name" value="<?= e($old['full_name']) ?>" required>
+
             <label for="username">Username</label>
-            <input type="text" id="username" name="username" value="<?= htmlspecialchars($username) ?>" required>
+            <input type="text" id="username" name="username" value="<?= e($old['username']) ?>" autocomplete="username" required>
 
             <label for="email">Email</label>
-            <input type="email" id="email" name="email" value="<?= htmlspecialchars($email) ?>" required>
+            <input type="email" id="email" name="email" value="<?= e($old['email']) ?>" autocomplete="email" required>
 
-            <label for="role">I am a</label>
-            <select id="role" name="role" required>
-                <option value="passenger" <?= $role === 'passenger' ? 'selected' : '' ?>>Passenger</option>
-                <option value="driver" <?= $role === 'driver' ? 'selected' : '' ?>>Driver</option>
-                <option value="operator" <?= $role === 'operator' ? 'selected' : '' ?>>Operator</option>
-            </select>
+            <label for="phone">Phone (optional)</label>
+            <input type="text" id="phone" name="phone" value="<?= e($old['phone']) ?>" autocomplete="tel">
 
             <label for="password">Password</label>
-            <input type="password" id="password" name="password" required>
+            <input type="password" id="password" name="password" autocomplete="new-password" required>
 
             <label for="confirm">Confirm password</label>
-            <input type="password" id="confirm" name="confirm" required>
+            <input type="password" id="confirm" name="confirm" autocomplete="new-password" required>
 
             <button type="submit" class="btn">Create account</button>
         </form>

@@ -1,44 +1,34 @@
 <?php
-require 'config/db.php';
-require 'config/auth.php';
-require 'config/layout.php';
-requireRole(['operator', 'admin']);
+require __DIR__ . '/config/auth.php';
+require __DIR__ . '/config/layout.php';
+$user = requireRole(['operator']);
+$pdo = db();
 
-$drivers    = $pdo->query("SELECT username, email, created_at FROM users WHERE role = 'driver' ORDER BY username")->fetchAll();
-$passengers = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'passenger'")->fetchColumn();
+$pending = (int)$pdo->query("SELECT COUNT(*) FROM bookings WHERE status = 'pending'")->fetchColumn();
+$live    = (int)$pdo->query("SELECT COUNT(*) FROM bookings WHERE status IN ('assigned','en_route','in_progress')")->fetchColumn();
+$online  = (int)$pdo->query("SELECT COUNT(*) FROM drivers WHERE status = 'online' AND is_active = 1")->fetchColumn();
+$board   = $pdo->query('SELECT driver_name, availability, default_unit_plate, active_booking_code, next_route_code, next_route_start FROM v_driver_board ORDER BY driver_name')->fetchAll();
 
-dashHeader('Operator Dashboard');
+dashHeader('Operator Dashboard', 'operator_dashboard.php');
 ?>
-        <div class="greet"><h2>Hello, <?= htmlspecialchars($_SESSION['username']) ?></h2><p>Your drivers and passengers at a glance.</p></div>
-
+        <div class="greet"><h2>Hello, <?= e($user['full_name']) ?></h2><p>Dispatch overview.</p></div>
         <div class="row stats">
-            <div class="stat-card glass">
-                <div class="stat-top"><span class="chip"><?= icon('car') ?></span>Drivers</div>
-                <div class="stat-body"><b><?= count($drivers) ?></b></div>
-                <span class="trend">Registered</span>
-            </div>
-            <div class="stat-card glass">
-                <div class="stat-top"><span class="chip"><?= icon('ticket') ?></span>Passengers</div>
-                <div class="stat-body"><b><?= $passengers ?></b></div>
-                <span class="trend">Registered</span>
-            </div>
+            <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('ticket') ?></span>Pending requests</div><div class="stat-body"><b><?= $pending ?></b></div></div>
+            <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('map') ?></span>Trips in progress</div><div class="stat-body"><b><?= $live ?></b></div></div>
+            <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('car') ?></span>Drivers online</div><div class="stat-body"><b><?= $online ?></b></div></div>
         </div>
-
-        <div class="panel glass" id="drivers">
-            <h3>Drivers</h3>
-            <table data-filter>
-                <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead>
+        <div class="panel glass">
+            <h3>Driver availability board</h3>
+            <table>
+                <thead><tr><th>Driver</th><th>Availability</th><th>Unit</th><th>Passenger trip</th><th>Next official route</th></tr></thead>
                 <tbody>
-                <?php foreach ($drivers as $d): ?>
-                    <tr><td><?= htmlspecialchars($d['username']) ?></td><td><?= htmlspecialchars($d['email']) ?></td><td><span class="pill driver">Driver</span></td><td><?= $d['created_at'] ?></td></tr>
+                <?php foreach ($board as $d): ?>
+                    <tr><td><?= e($d['driver_name']) ?></td><td><span class="pill <?= $d['availability'] === 'offline' ? 'off' : 'operator' ?>"><?= e(str_replace('_', '-', $d['availability'])) ?></span></td>
+                        <td><?= e($d['default_unit_plate']) ?></td><td class="mono"><?= e($d['active_booking_code']) ?></td>
+                        <td><?= e($d['next_route_code'] ? $d['next_route_code'] . ' at ' . $d['next_route_start'] : '') ?></td></tr>
                 <?php endforeach; ?>
-                <?php if (!$drivers): ?><tr><td colspan="4" class="note">No drivers yet.</td></tr><?php endif; ?>
+                <?php if (!$board): ?><tr><td colspan="5" class="hint">No drivers registered.</td></tr><?php endif; ?>
                 </tbody>
             </table>
-        </div>
-
-        <div class="panel glass" id="dispatch">
-            <h3>Dispatch</h3>
-            <p class="note">Trips, vehicles and routes will appear here once you add those tables.</p>
         </div>
 <?php dashFooter();
