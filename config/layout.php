@@ -13,20 +13,28 @@ function icon(string $name): string
         'ticket'   => '<path d="M3 9a2 2 0 0 1 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/>',
         'clock'    => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
         'logout'   => '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
+        'pin'      => '<path d="M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
         'shield'   => '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
     ];
     return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . ($paths[$name] ?? '') . '</svg>';
 }
 
-/** Sidebar links per role: [label, icon, href]. Only pages that exist are listed. */
+/** Navigation links per role: [label, icon, href]. Only pages that exist are listed. */
 function roleNav(string $role): array
 {
-    $home = [['Dashboard', 'home', roleHome($role)]];
-    $extra = $role === 'officer' ? [['Users', 'users', 'officer_users.php']] : [];
-    return array_merge($home, $extra, [['My account', 'user', 'account.php']]);
+    $items = match ($role) {
+        'passenger' => [['Home', 'home', 'passenger_dashboard.php'], ['Book', 'pin', 'passenger_book.php'], ['My trips', 'clock', 'passenger_history.php']],
+        'driver'    => [['Home', 'home', 'driver_dashboard.php']],
+        'operator'  => [['Home', 'home', 'operator_dashboard.php'], ['Dispatch', 'map', 'operator_dispatch.php']],
+        'officer'   => [['Home', 'home', 'officer_dashboard.php'], ['Users', 'users', 'officer_users.php']],
+        default     => [],
+    };
+    $items[] = ['Account', 'user', 'account.php'];
+    return $items;
 }
 
-function dashHeader(string $title, string $activeHref): void
+/** $opts: 'maps' => true loads Leaflet's stylesheet for pages with a map. */
+function dashHeader(string $title, string $activeHref, array $opts = []): void
 {
     $user     = currentUser();
     $role     = $user['role'];
@@ -38,27 +46,37 @@ function dashHeader(string $title, string $activeHref): void
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#dbe8fb">
+    <meta name="csrf-token" content="<?= e(csrfToken()) ?>">
     <title><?= e($title) ?> - TRODDAC</title>
     <link rel="stylesheet" href="assets/css/style.css">
+    <?php if (!empty($opts['maps'])): ?><link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css"><?php endif; ?>
     <link rel="stylesheet" href="assets/css/dashboard.css">
 </head>
 <body class="dash role-<?= e($role) ?>">
 <div class="app">
-    <aside class="sidebar glass">
+    <header class="topbar">
+        <div class="logo"><span class="logo-mark"><?= icon('shield') ?></span><span>TRODDAC</span></div>
+        <div class="who">
+            <span class="name"><?= $name ?></span>
+            <form method="post" action="logout.php" class="logout-form"><?= csrfField() ?><button type="submit" aria-label="Log out" title="Log out"><?= icon('logout') ?></button></form>
+        </div>
+    </header>
+    <nav class="sidebar" aria-label="Main">
         <div class="logo"><span class="logo-mark"><?= icon('shield') ?></span><span>TRODDAC</span></div>
         <p class="side-label">Menu</p>
-        <nav class="side-nav">
+        <div class="side-nav">
             <?php foreach (roleNav($role) as [$label, $ico, $href]): ?>
                 <a href="<?= e($href) ?>" class="<?= $href === $activeHref ? 'active' : '' ?>"><?= icon($ico) ?><span><?= e($label) ?></span></a>
             <?php endforeach; ?>
-        </nav>
+        </div>
         <div class="side-user">
             <div class="avatar sm"><?= $initial ?></div>
             <div><b><?= $name ?></b><small><?= $roleName ?></small></div>
             <form method="post" action="logout.php" class="logout-form"><?= csrfField() ?><button type="submit" aria-label="Log out" title="Log out"><?= icon('logout') ?></button></form>
         </div>
-    </aside>
+    </nav>
     <main class="main">
         <?php foreach (takeFlashes() as $f): ?>
             <div class="flash <?= e($f['type']) ?> glass" role="status"><?= e($f['message']) ?></div>
@@ -66,7 +84,33 @@ function dashHeader(string $title, string $activeHref): void
 <?php
 }
 
-function dashFooter(): void
+/**
+ * $scripts: files under assets/js to load (Leaflet is loaded first when 'maps' is requested).
+ * $boot: page data handed to the scripts as JSON (read by assets/js/boot.js).
+ */
+function dashFooter(array $scripts = [], array $boot = [], bool $maps = false): void
 {
-    echo "    </main>\n</div>\n</body>\n</html>\n";
+    $cfg  = appConfig();
+    $boot += [
+        'csrf'    => csrfToken(),
+        'poll'    => (int)$cfg['poll_seconds'],
+        'map'     => [
+            'tileUrl'     => $cfg['map']['tile_url'],
+            'attribution' => $cfg['map']['attribution'],
+            'zoom'        => $cfg['map']['default_zoom'],
+            'center'      => [$cfg['service_area']['center_lat'], $cfg['service_area']['center_lng']],
+            'radiusKm'    => $cfg['service_area']['radius_km'],
+        ],
+    ];
+    echo "    </main>\n</div>\n";
+    echo '<script type="application/json" id="boot">' . json_encode($boot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . "</script>\n";
+    echo '<script src="assets/js/boot.js"></script>' . "\n";
+    if ($maps) {
+        echo '<script src="assets/vendor/leaflet/leaflet.js"></script>' . "\n";
+        echo '<script src="assets/js/maps.js"></script>' . "\n";
+    }
+    foreach ($scripts as $file) {
+        echo '<script src="assets/js/' . e($file) . '"></script>' . "\n";
+    }
+    echo "</body>\n</html>\n";
 }

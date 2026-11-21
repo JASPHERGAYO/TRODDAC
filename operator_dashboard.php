@@ -12,12 +12,16 @@ $board   = $pdo->query('SELECT driver_name, availability, default_unit_plate, ac
 dashHeader('Operator Dashboard', 'operator_dashboard.php');
 ?>
         <div class="greet"><h2>Hello, <?= e($user['full_name']) ?></h2><p>Dispatch overview.</p></div>
+        <div class="panel glass" style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+            <div><b><?= $pending ?> request(s) waiting</b><div class="hint" style="margin:0">Open the dispatch screen to assign drivers.</div></div>
+            <a class="btn" href="operator_dispatch.php">Open dispatch</a>
+        </div>
         <div class="row stats">
             <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('ticket') ?></span>Pending requests</div><div class="stat-body"><b><?= $pending ?></b></div></div>
             <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('map') ?></span>Trips in progress</div><div class="stat-body"><b><?= $live ?></b></div></div>
             <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('car') ?></span>Drivers online</div><div class="stat-body"><b><?= $online ?></b></div></div>
         </div>
-        <div class="panel glass">
+        <div class="panel glass scroll">
             <h3>Driver availability board</h3>
             <table>
                 <thead><tr><th>Driver</th><th>Availability</th><th>Unit</th><th>Passenger trip</th><th>Next official route</th></tr></thead>

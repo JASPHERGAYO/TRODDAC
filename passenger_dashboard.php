@@ -17,7 +17,11 @@ $recent = $recent->fetchAll();
 
 dashHeader('Passenger Dashboard', 'passenger_dashboard.php');
 ?>
-        <div class="greet"><h2>Hello, <?= e($user['full_name']) ?></h2><p>Your bookings at a glance.</p></div>
+        <div class="greet"><h2>Hello, <?= e($user['full_name']) ?></h2><p>Where are you going today?</p></div>
+        <div class="panel glass" style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+            <div><b>Need a tricycle?</b><div class="hint" style="margin:0">Book with your GPS location and see the fare first.</div></div>
+            <a class="btn" href="<?= ((int)$s['open_trips'] > 0) ? 'passenger_trip.php' : 'passenger_book.php' ?>"><?= ((int)$s['open_trips'] > 0) ? 'View my current trip' : 'Book a tricycle' ?></a>
+        </div>
         <div class="row stats">
             <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('ticket') ?></span>All bookings</div><div class="stat-body"><b><?= (int)$s['total'] ?></b></div></div>
             <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('clock') ?></span>Open trips</div><div class="stat-body"><b><?= (int)$s['open_trips'] ?></b></div></div>
@@ -25,15 +29,16 @@ dashHeader('Passenger Dashboard', 'passenger_dashboard.php');
         </div>
         <div class="panel glass">
             <h3>Recent bookings</h3>
-            <table>
-                <thead><tr><th>Code</th><th>From</th><th>To</th><th>km</th><th>Fare</th><th>Status</th><th>Requested</th></tr></thead>
-                <tbody>
+            <div class="list">
                 <?php foreach ($recent as $b): ?>
-                    <tr><td class="mono"><?= e($b['booking_code']) ?></td><td><?= e($b['pickup_label']) ?></td><td><?= e($b['dest_label']) ?></td>
-                        <td><?= e($b['distance_km']) ?></td><td>&#8369;<?= e($b['estimated_fare']) ?></td><td><span class="pill passenger"><?= e($b['status']) ?></span></td><td><?= e($b['requested_at']) ?></td></tr>
+                    <div class="item">
+                        <div class="head"><span class="mono"><?= e($b['booking_code']) ?></span><span class="pill <?= e($b['status']) ?>"><?= e(str_replace('_', ' ', $b['status'])) ?></span></div>
+                        <div class="route"><?= e($b['pickup_label']) ?> &rarr; <?= e($b['dest_label']) ?></div>
+                        <div class="meta"><?= e($b['requested_at']) ?> &middot; <?= e($b['distance_km']) ?> km &middot; &#8369;<?= e($b['estimated_fare']) ?></div>
+                    </div>
                 <?php endforeach; ?>
-                <?php if (!$recent): ?><tr><td colspan="7" class="hint">You have no bookings yet.</td></tr><?php endif; ?>
-                </tbody>
-            </table>
+                <?php if (!$recent): ?><div class="empty">You have no bookings yet.</div><?php endif; ?>
+            </div>
+            <?php if ($recent): ?><p style="margin:12px 0 0"><a href="passenger_history.php">See all trips</a></p><?php endif; ?>
         </div>
 <?php dashFooter();

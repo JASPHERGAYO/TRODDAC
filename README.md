@@ -26,8 +26,23 @@ Change these passwords (My account page) before using real data.
 ```
 D:\xampp\php\php.exe database\verify.php                                  # 45 database tests
 D:\xampp\php\php.exe tests\phase2_http_test.php http://localhost/troddac  # 71 login / role tests
+D:\xampp\php\php.exe tests\phase3_http_test.php http://localhost/troddac  # 67 booking / dispatch / driver tests
 ```
-Both clean up after themselves. Use the real folder name in the URL.
+They clean up after themselves (the Phase 3 test needs the database to have no open bookings). Use the real folder name in the URL.
+The Phase 3 test works offline too: without internet the road distance falls back to a straight-line estimate.
+
+## Booking flow (Module A)
+1. **Passenger** (`passenger_book.php`): taps *Use my location* (GPS) or the map for the pickup, picks the destination on the map or by search, sees the road route, distance and fare, then requests a tricycle. Only one open booking at a time.
+2. **Operator** (`operator_dispatch.php`): the request appears within a few seconds with a sound. The operator picks a driver (nearest first) and a unit and assigns it.
+3. **Driver** (`driver_dashboard.php`): goes *Online* (this starts GPS sharing). The assigned booking appears on the dashboard with the passenger, pickup, drop-off, route map and buttons: *On my way*, *Picked up*, *Decline*, *Complete trip*.
+4. **Passenger** (`passenger_trip.php`): follows the status and the tricycle's live position on the map, and can cancel until the trip starts.
+
+## Things to know
+- **Internet is needed** for the map tiles (OpenStreetMap), address search (Nominatim) and road routing (OSRM demo server). Leaflet itself is bundled in `assets/vendor/leaflet`. Change the routing server in `config/config.php`.
+- **GPS only works on https or localhost.** On the XAMPP computer use `http://localhost/troddac`. To test on a phone over Wi-Fi use `https://<computer-ip>/troddac` (XAMPP's built-in https, accept the certificate warning). Without GPS the passenger can still tap the map and the driver can still be dispatched, but the driver's position is not shared.
+- Bookings must be inside the 25 km service circle around Dasmariñas (`service_area` in `config/config.php`).
+- Dispatch is manual by the operator, as in the specification. Drivers cannot pick up requests themselves.
+- The screens update by polling every 4 seconds.
 
 ## Accounts and roles
 - Passengers register themselves at `register.php`. Registration can only create passengers.

@@ -21,6 +21,7 @@ users, terminals, tricycle_units, drivers, driver_schedules, routes, route_sched
 driver_route_eligibility (rotation queue), rotation_pointers, fare_matrices, bookings, booking_status_history,
 driver_locations, route_assignments, route_assignment_history.
 Views: v_driver_board, v_assignment_overview, v_active_trips.
+Migration 008 adds login support; 009 adds booking details (passenger count, notes, route geometry).
 
 ## Rules enforced by the database
 - Only one active fare matrix; fares are calculated by `fn_calculate_fare()` (never trusted from the browser).

@@ -241,7 +241,7 @@ function jsonOut(array $data, int $status = 200): never
 }
 
 /** For API endpoints: answers 401/403/419 as JSON instead of redirecting. */
-function requireApiRole(array $roles, bool $checkCsrf = true): array
+function requireApiRole(array $roles, bool $checkCsrf = true, bool $releaseSession = false): array
 {
     startSecureSession();
     $user = currentUser();
@@ -253,6 +253,10 @@ function requireApiRole(array $roles, bool $checkCsrf = true): array
     }
     if ($checkCsrf && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET' && !verifyCsrf()) {
         jsonOut(['ok' => false, 'error' => 'Invalid or missing CSRF token.'], 419);
+    }
+    if ($releaseSession) {
+        // Read-only polling endpoints must not hold the session lock, or they queue behind each other.
+        session_write_close();
     }
     return $user;
 }

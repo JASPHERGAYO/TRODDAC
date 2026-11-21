@@ -4,7 +4,14 @@ declare(strict_types=1);
 function appConfig(): array
 {
     static $config = null;
-    return $config ??= require __DIR__ . '/config.php';
+    if ($config === null) {
+        $config = require __DIR__ . '/config.php';
+        // Lets tests point the routing service somewhere else without editing config.php.
+        if (($override = getenv('TRODDAC_OSRM_BASE')) !== false && $override !== '') {
+            $config['routing']['osrm_base'] = $override;
+        }
+    }
+    return $config;
 }
 
 /** One shared PDO connection per request. */
