@@ -75,6 +75,9 @@ function val(PDO $pdo, string $sql, array $p = []): mixed { $st = $pdo->prepare(
 function row(PDO $pdo, string $sql, array $p = []): array { $st = $pdo->prepare($sql); $st->execute($p); return $st->fetch() ?: []; }
 
 $started = (string)val($pdo, 'SELECT NOW()');
+// The automatic route engine would give drivers official routes depending on the time of day; switch it off for this test.
+$autoBefore = $pdo->query('SELECT route_id, auto_assign_enabled FROM rotation_settings')->fetchAll();
+$pdo->exec('UPDATE rotation_settings SET auto_assign_enabled = 0');
 $pdo->exec('DELETE FROM login_attempts');
 $pdo->exec('DELETE FROM driver_locations');
 $pdo->exec("UPDATE drivers SET status = 'offline'");
@@ -237,6 +240,7 @@ $pdo->exec("UPDATE drivers SET status = 'offline'");
 $ins = $pdo->prepare('INSERT IGNORE INTO driver_schedules (driver_id, day_of_week, start_time, end_time) VALUES (?,?,?,?)');
 for ($day = 1; $day <= 6; $day++) { $ins->execute([$d2, $day, '05:00:00', '21:00:00']); }
 $pdo->prepare('DELETE FROM login_attempts WHERE attempted_at >= ?')->execute([$started]);
+foreach ($autoBefore as $a) { $pdo->prepare('UPDATE rotation_settings SET auto_assign_enabled = ? WHERE route_id = ?')->execute([$a['auto_assign_enabled'], $a['route_id']]); }
 
 echo PHP_EOL . "Result: $pass passed, $fail failed." . PHP_EOL;
 exit($fail === 0 ? 0 : 1);

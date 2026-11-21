@@ -2,8 +2,10 @@
 // GET  -  everything the driver screen needs in one call: availability, the live booking, next official routes.
 require __DIR__ . '/../config/auth.php';
 require __DIR__ . '/../config/api.php';
+require __DIR__ . '/../lib/AssignmentEngine.php';
 $user = requireApiRole(['driver'], false, true);
 $pdo = db();
+AssignmentEngine::runIfDue($pdo);   // keeps official routes moving while drivers use the app
 
 $driver = driverRowFor((int)$user['id']);
 if ($driver === null) {
@@ -20,16 +22,10 @@ if ($b) {
     $booking['unit'] = ['plate' => $b['plate_number'], 'body' => $b['body_number']];
 }
 
-$routes = $pdo->prepare("SELECT r.code, r.name, ra.start_datetime, ra.end_datetime, ra.status
-                           FROM route_assignments ra JOIN routes r ON r.id = ra.route_id
-                          WHERE ra.driver_id = ? AND ra.status IN ('scheduled','active') AND ra.end_datetime > NOW()
-                          ORDER BY ra.start_datetime LIMIT 5");
-$routes->execute([$driver['id']]);
-
 jsonOut([
     'ok'           => true,
     'availability' => $driver['status'],
     'booking'      => $booking,
-    'routes'       => $routes->fetchAll(),
+    'official'     => driverOfficialRoutes((int)$driver['id']),
     'server_time'  => date('c'),
 ]);

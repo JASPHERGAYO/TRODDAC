@@ -2,8 +2,10 @@
 // GET  -  the dispatch picture: pending requests (with nearest drivers), live trips, free drivers and units.
 require __DIR__ . '/../config/auth.php';
 require __DIR__ . '/../config/api.php';
+require __DIR__ . '/../lib/AssignmentEngine.php';
 requireApiRole(['operator', 'officer'], false, true);
 $pdo = db();
+AssignmentEngine::runIfDue($pdo);
 
 $drivers = $pdo->query("SELECT d.id, u.full_name, u.phone, d.default_unit_id, tu.plate_number, d.last_latitude, d.last_longitude, d.last_seen_at
                           FROM drivers d

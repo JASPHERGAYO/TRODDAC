@@ -32,11 +32,10 @@ if (!$driver): ?>
             <div class="actions" id="b-actions"></div>
         </div>
 
-        <div class="split">
-            <div id="map" class="map"></div>
-            <div class="panel glass">
-                <h3>Upcoming official routes</h3>
-                <div class="list" id="routes"></div>
-            </div>
+        <div class="panel glass" id="official-panel">
+            <h3>Official route assignment</h3>
+            <div class="list" id="official"></div>
         </div>
+
+        <div id="map" class="map"></div>
 <?php dashFooter(['driver_app.js'], [], true);

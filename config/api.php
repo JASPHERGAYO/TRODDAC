@@ -28,6 +28,9 @@ function apiMustBePost(): void
 /** Database trigger errors carry a friendly "TRD-Exxx: message"; show that, hide everything else. */
 function dbErrorMessage(PDOException $e): string
 {
+    if (isSchemaError($e)) {
+        return SCHEMA_HELP;
+    }
     if (preg_match('/TRD-E\d+:\s*([^"\']+?)(?:\s*\(\d+\))?$/m', $e->getMessage(), $m)) {
         return trim($m[1]);
     }
@@ -233,4 +236,52 @@ function driverBlock(array $b): ?array
         'seen_at' => $b['last_seen_at'],
         'fresh'   => $recent,
     ];
+}
+
+/** A route's drawn path: the stored one, or a road route between its terminals (cached once found). */
+function routePath(array $route): array
+{
+    $stored = json_decode((string)($route['path_json'] ?? ''), true);
+    if (is_array($stored) && count($stored) >= 2) {
+        return $stored;
+    }
+    $found = fetchRoute((float)$route['o_lat'], (float)$route['o_lng'], (float)$route['d_lat'], (float)$route['d_lng']);
+    if ($found['source'] === 'road') {
+        db()->prepare('UPDATE routes SET path_json = ? WHERE id = ?')->execute([json_encode($found['geometry']), $route['route_id']]);
+    }
+    return $found['geometry'];
+}
+
+/** Official route assignments of a driver (current and upcoming) with terminals and the route line. */
+function driverOfficialRoutes(int $driverId, int $limit = 5): array
+{
+    $st = db()->prepare("SELECT ra.id, ra.status, ra.start_datetime, ra.end_datetime, ra.rotation_cycle, ra.queue_position,
+                                r.id AS route_id, r.code, r.name, r.distance_km, r.path_json,
+                                ot.name AS o_name, ot.latitude AS o_lat, ot.longitude AS o_lng,
+                                dt.name AS d_name, dt.latitude AS d_lat, dt.longitude AS d_lng,
+                                tu.plate_number
+                           FROM route_assignments ra
+                           JOIN routes r     ON r.id = ra.route_id
+                           JOIN terminals ot ON ot.id = r.origin_terminal_id
+                           JOIN terminals dt ON dt.id = r.destination_terminal_id
+                           LEFT JOIN tricycle_units tu ON tu.id = ra.unit_id
+                          WHERE ra.driver_id = ? AND ra.status IN ('scheduled','active') AND ra.end_datetime > NOW()
+                          ORDER BY ra.start_datetime LIMIT " . (int)$limit);
+    $st->execute([$driverId]);
+    $out = [];
+    foreach ($st->fetchAll() as $i => $a) {
+        $out[] = [
+            'id'       => (int)$a['id'],
+            'status'   => $a['status'],
+            'start'    => $a['start_datetime'],
+            'end'      => $a['end_datetime'],
+            'plate'    => $a['plate_number'],
+            'route'    => ['code' => $a['code'], 'name' => $a['name'], 'distance_km' => (float)$a['distance_km']],
+            'origin'   => ['name' => $a['o_name'], 'lat' => (float)$a['o_lat'], 'lng' => (float)$a['o_lng']],
+            'terminal' => ['name' => $a['o_name']],
+            'dest'     => ['name' => $a['d_name'], 'lat' => (float)$a['d_lat'], 'lng' => (float)$a['d_lng']],
+            'geometry' => $i === 0 ? routePath($a) : [],     // only the first one needs the line drawn
+        ];
+    }
+    return $out;
 }

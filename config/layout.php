@@ -25,8 +25,8 @@ function roleNav(string $role): array
     $items = match ($role) {
         'passenger' => [['Home', 'home', 'passenger_dashboard.php'], ['Book', 'pin', 'passenger_book.php'], ['My trips', 'clock', 'passenger_history.php']],
         'driver'    => [['Home', 'home', 'driver_dashboard.php']],
-        'operator'  => [['Home', 'home', 'operator_dashboard.php'], ['Dispatch', 'map', 'operator_dispatch.php']],
-        'officer'   => [['Home', 'home', 'officer_dashboard.php'], ['Users', 'users', 'officer_users.php']],
+        'operator'  => [['Home', 'home', 'operator_dashboard.php'], ['Dispatch', 'map', 'operator_dispatch.php'], ['Routes', 'clock', 'operator_assignments.php']],
+        'officer'   => [['Home', 'home', 'officer_dashboard.php'], ['Users', 'users', 'officer_users.php'], ['Routes', 'clock', 'operator_assignments.php']],
         default     => [],
     };
     $items[] = ['Account', 'user', 'account.php'];
@@ -78,6 +78,17 @@ function dashHeader(string $title, string $activeHref, array $opts = []): void
         </div>
     </nav>
     <main class="main">
+        <?php
+        // Warn when the code is newer than the database (a migration has not been run).
+        if (empty($_SESSION['schema_check']) || time() - (int)$_SESSION['schema_check']['at'] > 60) {
+            $_SESSION['schema_check'] = ['at' => time(), 'pending' => pendingMigrations()];
+        }
+        $pendingDb = $_SESSION['schema_check']['pending'];
+        if ($pendingDb): ?>
+            <div class="flash error glass" role="alert"><?= $role === 'officer' || $role === 'operator'
+                ? 'Database update needed (' . count($pendingDb) . ' pending). Run: php database\\migrate.php migrate'
+                : 'The system is being updated. Some features may not work yet.' ?></div>
+        <?php endif; ?>
         <?php foreach (takeFlashes() as $f): ?>
             <div class="flash <?= e($f['type']) ?> glass" role="status"><?= e($f['message']) ?></div>
         <?php endforeach; ?>

@@ -6,7 +6,7 @@
     const esc = TRD.esc;
 
     const map = M.create('map');
-    const layers = { pickup: null, dest: null, route: null, me: null, key: '' };
+    const layers = { pickup: null, dest: null, route: null, me: null, key: '', okey: '', oOrigin: null, oDest: null, oRoute: null };
     const state = { availability: 'offline', booking: null, lastBookingId: null, watchId: null, lastSent: 0, lastPos: null, busy: false };
 
     /* ---------- GPS sharing ---------- */
@@ -142,12 +142,27 @@
         M.fit(map, pts, 17);
     }
 
-    /* ---------- official routes ---------- */
-    function renderRoutes(list) {
-        $('routes').innerHTML = list.length
-            ? list.map((r) => '<div class="item"><div class="head"><b>' + esc(r.code + ' - ' + r.name) + '</b><span class="pill driver">' + esc(r.status) + '</span></div>'
-                + '<div class="meta">' + esc(r.start_datetime) + ' to ' + esc(r.end_datetime) + '</div></div>').join('')
-            : '<div class="empty">No official route assigned yet.</div>';
+    /* ---------- official routes (Module B) ---------- */
+    function renderOfficial(list) {
+        const when = (a) => a.start.slice(0, 10) + ' ' + a.start.slice(11, 16) + ' to ' + a.end.slice(11, 16);
+        $('official').innerHTML = list.length
+            ? list.map((a, i) => '<div class="item' + (i === 0 ? ' alert-new' : '') + '" style="' + (i === 0 ? '' : 'opacity:.85') + '">'
+                + '<div class="head"><b>' + esc(a.route.code + ' - ' + a.route.name) + '</b><span class="pill ' + (a.status === 'active' ? 'in_progress' : 'assigned') + '">' + (a.status === 'active' ? 'On route now' : 'Scheduled') + '</span></div>'
+                + '<div class="route"><b>Terminal:</b> ' + esc(a.origin.name) + ' &rarr; ' + esc(a.dest.name) + '</div>'
+                + '<div class="meta">' + esc(when(a)) + ' &middot; ' + a.route.distance_km.toFixed(1) + ' km' + (a.plate ? ' &middot; ' + esc(a.plate) : '') + '</div></div>').join('')
+            : '<div class="empty">No official route assigned yet. Assignments are made automatically in rotation.</div>';
+    }
+
+    function renderOfficialMap(a) {
+        const key = a ? 'o' + a.id + ':' + a.status : '';
+        if (key === layers.okey) return;
+        layers.okey = key;
+        ['oOrigin', 'oDest', 'oRoute'].forEach((k) => { if (layers[k]) { map.removeLayer(layers[k]); layers[k] = null; } });
+        if (!a) return;
+        layers.oOrigin = M.marker(map, 'pickup', 'T1', a.origin.lat, a.origin.lng, { interactive: false }).bindTooltip(esc(a.origin.name));
+        layers.oDest = M.marker(map, 'dest', 'T2', a.dest.lat, a.dest.lng, { interactive: false }).bindTooltip(esc(a.dest.name));
+        if (a.geometry.length > 1) layers.oRoute = L.polyline(a.geometry, { color: '#d97706', weight: 5, opacity: 0.85, dashArray: '10 8' }).addTo(map);
+        M.fit(map, (a.geometry.length > 1 ? a.geometry : [[a.origin.lat, a.origin.lng], [a.dest.lat, a.dest.lng]]), 16);
     }
 
     /* ---------- polling ---------- */
@@ -174,7 +189,8 @@
         state.booking = b;
         renderBookingCard(b, isNew);
         renderMap(b);
-        renderRoutes(data.routes || []);
+        renderOfficial(data.official || []);
+        renderOfficialMap(b ? null : (data.official && data.official[0]) || null);
     }
 
     TRD.poll(load);
