@@ -14,6 +14,8 @@ function icon(string $name): string
         'clock'    => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
         'logout'   => '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
         'pin'      => '<path d="M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+        'coin'     => '<circle cx="12" cy="12" r="9"/><path d="M14.5 9.2A2.6 2.6 0 0 0 12 7.8c-1.4 0-2.5.8-2.5 2s1.1 1.8 2.5 2.1 2.5.8 2.5 2-1.1 2-2.5 2a2.6 2.6 0 0 1-2.5-1.4M12 6v1.8M12 16.2V18"/>',
+        'flag'     => '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
         'shield'   => '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
     ];
     return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . ($paths[$name] ?? '') . '</svg>';
@@ -23,10 +25,10 @@ function icon(string $name): string
 function roleNav(string $role): array
 {
     $items = match ($role) {
-        'passenger' => [['Home', 'home', 'passenger_dashboard.php'], ['Book', 'pin', 'passenger_book.php'], ['My trips', 'clock', 'passenger_history.php']],
+        'passenger' => [['Home', 'home', 'passenger_dashboard.php'], ['Book', 'pin', 'passenger_book.php'], ['My trips', 'clock', 'passenger_history.php'], ['Report', 'flag', 'passenger_report.php']],
         'driver'    => [['Home', 'home', 'driver_dashboard.php']],
         'operator'  => [['Home', 'home', 'operator_dashboard.php'], ['Dispatch', 'map', 'operator_dispatch.php'], ['Routes', 'clock', 'operator_assignments.php']],
-        'officer'   => [['Home', 'home', 'officer_dashboard.php'], ['Users', 'users', 'officer_users.php'], ['Routes', 'clock', 'operator_assignments.php']],
+        'officer'   => [['Home', 'home', 'officer_dashboard.php'], ['Users', 'users', 'officer_users.php'], ['Routes', 'clock', 'operator_assignments.php'], ['Fares', 'coin', 'officer_fares.php'], ['Reports', 'flag', 'officer_reports.php']],
         default     => [],
     };
     $items[] = ['Account', 'user', 'account.php'];
@@ -124,4 +126,16 @@ function dashFooter(array $scripts = [], array $boot = [], bool $maps = false): 
         echo '<script src="assets/js/' . e($file) . '"></script>' . "\n";
     }
     echo "</body>\n</html>\n";
+}
+
+/** Stops a page politely when its tables/columns are missing (a migration was not run). Call after requireRole(). */
+function requireSchemaOrExplain(array $needs, string $title, string $activeHref): void
+{
+    if (!schemaMissing($needs)) {
+        return;
+    }
+    dashHeader($title, $activeHref);
+    echo '<div class="panel glass"><h3>Database update needed</h3><p class="note">' . e(SCHEMA_HELP) . '</p></div>';
+    dashFooter();
+    exit;
 }

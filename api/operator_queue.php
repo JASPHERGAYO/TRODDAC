@@ -7,7 +7,7 @@ requireApiRole(['operator', 'officer'], false, true);
 $pdo = db();
 AssignmentEngine::runIfDue($pdo);
 
-$drivers = $pdo->query("SELECT d.id, u.full_name, u.phone, d.default_unit_id, tu.plate_number, d.last_latitude, d.last_longitude, d.last_seen_at
+$drivers = $pdo->query("SELECT d.id, u.full_name, u.phone, d.default_unit_id, COALESCE(tu.plate_number, tu.body_number) AS plate_number, d.last_latitude, d.last_longitude, d.last_seen_at
                           FROM drivers d
                           JOIN users u ON u.id = d.user_id
                           LEFT JOIN tricycle_units tu ON tu.id = d.default_unit_id
@@ -17,14 +17,14 @@ $drivers = $pdo->query("SELECT d.id, u.full_name, u.phone, d.default_unit_id, tu
                                               AND ra.start_datetime < DATE_ADD(NOW(), INTERVAL 40 MINUTE) AND ra.end_datetime > NOW())
                          ORDER BY u.full_name")->fetchAll();
 
-$units = $pdo->query("SELECT tu.id, tu.plate_number, tu.body_number
+$units = $pdo->query("SELECT tu.id, COALESCE(tu.plate_number, tu.body_number) AS plate_number, tu.body_number
                         FROM tricycle_units tu
                        WHERE tu.status = 'active'
                          AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.unit_id = tu.id AND b.status IN ('assigned','en_route','in_progress'))
                          AND NOT EXISTS (SELECT 1 FROM route_assignments ra
                                           WHERE ra.unit_id = tu.id AND ra.status IN ('scheduled','active')
                                             AND ra.start_datetime < DATE_ADD(NOW(), INTERVAL 40 MINUTE) AND ra.end_datetime > NOW())
-                       ORDER BY tu.plate_number")->fetchAll();
+                       ORDER BY plate_number")->fetchAll();
 
 $driverOut = array_map(static fn($d) => [
     'id'        => (int)$d['id'],

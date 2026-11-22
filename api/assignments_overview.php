@@ -16,7 +16,7 @@ $stats = $pdo->query("SELECT
 
 $rows = $pdo->query("SELECT ra.id, ra.status, ra.source, ra.start_datetime, ra.end_datetime, ra.rotation_cycle, ra.queue_position, ra.notes,
                             r.code, r.name AS route_name, ot.name AS origin, dt.name AS destination,
-                            u.full_name AS driver_name, tu.plate_number
+                            u.full_name AS driver_name, COALESCE(tu.plate_number, tu.body_number) AS plate_number
                        FROM route_assignments ra
                        JOIN routes r ON r.id = ra.route_id
                        JOIN terminals ot ON ot.id = r.origin_terminal_id

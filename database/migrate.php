@@ -68,8 +68,8 @@ function splitSql(string $sql): array {
 }
 
 function migrationFiles(): array {
-    $files = glob(__DIR__ . '/migrations/*.sql') ?: [];
-    sort($files);
+    $files = array_merge(glob(__DIR__ . '/migrations/*.sql') ?: [], glob(__DIR__ . '/migrations/*.php') ?: []);
+    usort($files, static fn($a, $b) => strcmp(basename($a), basename($b)));
     return $files;
 }
 
@@ -98,6 +98,19 @@ function runMigrations(array $db): void {
             continue;
         }
         out("Applying $version ...");
+        if (str_ends_with($file, '.php')) {
+            // A PHP migration returns a function(PDO $pdo) that checks what exists before changing anything.
+            try {
+                $apply = require $file;
+                $apply($pdo);
+            } catch (Throwable $e) {
+                out("FAILED in $version: " . $e->getMessage());
+                exit(1);
+            }
+            $pdo->prepare('INSERT INTO schema_migrations (version) VALUES (?)')->execute([$version]);
+            $ran++;
+            continue;
+        }
         foreach (splitSql(file_get_contents($file)) as $i => $stmt) {
             try {
                 $pdo->exec($stmt);

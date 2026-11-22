@@ -40,5 +40,6 @@ dashHeader('Passenger Dashboard', 'passenger_dashboard.php');
                 <?php if (!$recent): ?><div class="empty">You have no bookings yet.</div><?php endif; ?>
             </div>
             <?php if ($recent): ?><p style="margin:12px 0 0"><a href="passenger_history.php">See all trips</a></p><?php endif; ?>
+            <p style="margin:12px 0 0" class="hint">Something went wrong on a trip? <a href="passenger_report.php">Send a report</a>.</p>
         </div>
 <?php dashFooter();

@@ -3,7 +3,7 @@ require __DIR__ . '/config/auth.php';
 require __DIR__ . '/config/layout.php';
 $user = requireRole(['driver']);
 
-$st = db()->prepare('SELECT d.id, d.license_number, d.license_expiry, tu.plate_number, tu.body_number
+$st = db()->prepare('SELECT d.id, d.license_number, d.license_expiry, COALESCE(tu.plate_number, tu.body_number) AS plate_number, tu.body_number
                        FROM drivers d LEFT JOIN tricycle_units tu ON tu.id = d.default_unit_id WHERE d.user_id = ?');
 $st->execute([$user['id']]);
 $driver = $st->fetch();

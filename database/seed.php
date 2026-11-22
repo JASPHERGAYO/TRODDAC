@@ -22,10 +22,11 @@ function runSeed(PDO $pdo): void
             ['passenger1', 'passenger1@troddac.test', 'passenger123',  'Passenger One',       '09170000021', 'passenger'],
             ['passenger2', 'passenger2@troddac.test', 'passenger123',  'Passenger Two',       '09170000022', 'passenger'],
         ];
-        $ins = $pdo->prepare('INSERT INTO users (username, email, password, full_name, phone, role) VALUES (?,?,?,?,?,?)');
+        $ins = $pdo->prepare('INSERT INTO users (username, email, password, full_name, first_name, last_name, phone, role) VALUES (?,?,?,?,?,?,?,?)');
         $ids = [];
         foreach ($users as [$u, $e, $p, $n, $ph, $r]) {
-            $ins->execute([$u, $e, password_hash($p, PASSWORD_DEFAULT), $n, $ph, $r]);
+            [$first, $last] = array_pad(explode(' ', $n, 2), 2, '');
+            $ins->execute([$u, $e, password_hash($p, PASSWORD_DEFAULT), $n, $first, $last, $ph, $r]);
             $ids[$u] = (int)$pdo->lastInsertId();
         }
 

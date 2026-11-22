@@ -211,7 +211,7 @@ function bookingPayload(array $b, bool $withGeometry = true): array
 const BOOKING_SELECT = 'SELECT b.*, p.full_name AS passenger_name, p.phone AS passenger_phone,
                                du.full_name AS driver_name, du.phone AS driver_phone,
                                d.last_latitude, d.last_longitude, d.last_seen_at,
-                               tu.plate_number, tu.body_number, tu.color AS unit_color
+                               COALESCE(tu.plate_number, tu.body_number) AS plate_number, tu.body_number, tu.color AS unit_color
                           FROM bookings b
                           JOIN users p ON p.id = b.passenger_id
                           LEFT JOIN drivers d ON d.id = b.driver_id
@@ -259,7 +259,7 @@ function driverOfficialRoutes(int $driverId, int $limit = 5): array
                                 r.id AS route_id, r.code, r.name, r.distance_km, r.path_json,
                                 ot.name AS o_name, ot.latitude AS o_lat, ot.longitude AS o_lng,
                                 dt.name AS d_name, dt.latitude AS d_lat, dt.longitude AS d_lng,
-                                tu.plate_number
+                                COALESCE(tu.plate_number, tu.body_number) AS plate_number
                            FROM route_assignments ra
                            JOIN routes r     ON r.id = ra.route_id
                            JOIN terminals ot ON ot.id = r.origin_terminal_id

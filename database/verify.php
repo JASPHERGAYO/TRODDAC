@@ -123,6 +123,7 @@ expectError('an assignment outside the driver schedule is blocked', 'TRD-E404', 
 exec_($pdo, 'DELETE FROM driver_schedules WHERE driver_id = ?', [$d3]);
 expectError('a unit already on an overlapping assignment is blocked', 'TRD-E406', fn() => $newAssignment($R2, $d3, $u2, "$today 08:00:00", "$today 09:00:00"));
 expectOk('a non-overlapping assignment with a free unit is allowed', fn() => $newAssignment($R2, $d3, $u3, "$today 08:00:00", "$today 09:00:00"));
+exec_($pdo, 'DELETE FROM driver_schedules WHERE driver_id = ?', [$d4]);   // so the weekday cannot change which rule fires first
 expectError('an assignment cannot cross midnight', 'chk_assign_sameday', fn() => $newAssignment($R1, $d4, null, "$today 23:00:00", "$tomorrow 01:00:00"));
 report((int)val($pdo, 'SELECT COUNT(*) FROM route_assignment_history WHERE assignment_id = ?', [$a1]) === 1, 'assignment history logs the creation');
 exec_($pdo, "UPDATE route_assignments SET status='cancelled' WHERE id = ?", [$a1]);

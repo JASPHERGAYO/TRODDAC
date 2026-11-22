@@ -50,7 +50,7 @@ const SCHEMA_HELP = 'The database is out of date. Ask the administrator to run: 
 /** Migration files that have not been applied to this database yet. */
 function pendingMigrations(): array
 {
-    $names = array_map('basename', glob(__DIR__ . '/../database/migrations/*.sql') ?: []);
+    $names = array_map('basename', array_merge(glob(__DIR__ . '/../database/migrations/*.sql') ?: [], glob(__DIR__ . '/../database/migrations/*.php') ?: []));
     sort($names);
     try {
         $done = db()->query('SELECT version FROM schema_migrations')->fetchAll(PDO::FETCH_COLUMN);
@@ -79,3 +79,47 @@ set_exception_handler(static function (Throwable $e): void {
            . '<div class="alert">' . htmlspecialchars($message) . '</div></main></body></html>';
     }
 });
+
+/* ---------------------------------------------------------------- schema checks
+ * New features check that the tables/columns they need exist, so an un-migrated database
+ * produces a clear message instead of a crash.                                          */
+
+function schemaHas(string $table, ?string $column = null): bool
+{
+    static $cache = [];
+    $key = $table . '.' . ($column ?? '*');
+    if (!array_key_exists($key, $cache)) {
+        try {
+            if ($column === null) {
+                $st = db()->prepare('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?');
+                $st->execute([$table]);
+            } else {
+                $st = db()->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?');
+                $st->execute([$table, $column]);
+            }
+            $cache[$key] = (int)$st->fetchColumn() > 0;
+        } catch (PDOException $e) {
+            error_log('TRODDAC schema check failed: ' . $e->getMessage());
+            $cache[$key] = false;
+        }
+    }
+    return $cache[$key];
+}
+
+/** @param array<string, string[]> $needs table => [columns] (empty list = table only). Returns what is missing. */
+function schemaMissing(array $needs): array
+{
+    $missing = [];
+    foreach ($needs as $table => $columns) {
+        if (!schemaHas($table)) {
+            $missing[] = $table;
+            continue;
+        }
+        foreach ($columns as $column) {
+            if (!schemaHas($table, $column)) {
+                $missing[] = $table . '.' . $column;
+            }
+        }
+    }
+    return $missing;
+}

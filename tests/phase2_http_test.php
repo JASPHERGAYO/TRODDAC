@@ -131,14 +131,14 @@ check($c->request('GET', 'passenger_dashboard.php')['status'] === 302, 'POST log
 echo PHP_EOL . "== Registration ==" . PHP_EOL;
 $reg = new Http($base);
 $tmp = 'tmp_' . bin2hex(random_bytes(3));
-$r = $reg->post('register.php', ['full_name' => 'Tmp Passenger', 'username' => $tmp, 'email' => "$tmp@example.test", 'phone' => '', 'password' => 'Secret123', 'confirm' => 'Secret123', 'role' => 'officer']);
+$r = $reg->post('register.php', ['first_name' => 'Tmp', 'last_name' => 'Passenger', 'middle_initial' => '', 'username' => $tmp, 'email' => "$tmp@example.test", 'phone' => '', 'password' => 'Secret123', 'confirm' => 'Secret123', 'role' => 'officer']);
 check($r['status'] === 302 && str_contains($r['location'], 'login.php'), 'a passenger can register');
 check(dbVal($pdo, 'SELECT role FROM users WHERE username = ?', [$tmp]) === 'passenger', 'registration ignores a forged role=officer field');
-$r = $reg->post('register.php', ['full_name' => 'Dup', 'username' => $tmp, 'email' => "other_$tmp@example.test", 'password' => 'Secret123', 'confirm' => 'Secret123']);
+$r = $reg->post('register.php', ['first_name' => 'Dup', 'last_name' => 'Licate', 'username' => $tmp, 'email' => "other_$tmp@example.test", 'password' => 'Secret123', 'confirm' => 'Secret123']);
 check(str_contains($r['body'], 'already taken'), 'a duplicate username is rejected');
-$r = $reg->post('register.php', ['full_name' => 'Weak', 'username' => $tmp . 'w', 'email' => "w$tmp@example.test", 'password' => 'short', 'confirm' => 'short']);
+$r = $reg->post('register.php', ['first_name' => 'Weak', 'last_name' => 'Pass', 'username' => $tmp . 'w', 'email' => "w$tmp@example.test", 'password' => 'short', 'confirm' => 'short']);
 check(str_contains($r['body'], 'at least 8'), 'a weak password is rejected');
-$r = $reg->post('register.php', ['full_name' => 'Mismatch', 'username' => $tmp . 'm', 'email' => "m$tmp@example.test", 'password' => 'Secret123', 'confirm' => 'Secret124']);
+$r = $reg->post('register.php', ['first_name' => 'Mis', 'last_name' => 'Match', 'username' => $tmp . 'm', 'email' => "m$tmp@example.test", 'password' => 'Secret123', 'confirm' => 'Secret124']);
 check(str_contains($r['body'], 'do not match'), 'mismatched passwords are rejected');
 check((string)dbVal($pdo, 'SELECT password FROM users WHERE username = ?', [$tmp]) !== 'Secret123'
       && str_starts_with((string)dbVal($pdo, 'SELECT password FROM users WHERE username = ?', [$tmp]), '$2y$'), 'passwords are stored as bcrypt hashes');
@@ -155,24 +155,24 @@ check($r['status'] === 302, 'login works again once the lockout clears');
 echo PHP_EOL . "== Officer: user management ==" . PHP_EOL;
 $off = $clients['officer'];
 $drvName = 'tmp_drv' . bin2hex(random_bytes(2));
-$r = $off->post('officer_users.php', ['action' => 'create', 'role' => 'driver', 'full_name' => 'Tmp Driver', 'username' => $drvName, 'email' => "$drvName@example.test", 'phone' => '', 'license_number' => 'TMP-' . random_int(10000, 99999), 'license_expiry' => '', 'default_unit_id' => '0']);
+$r = $off->post('officer_users.php', ['action' => 'create', 'role' => 'driver', 'first_name' => 'Tmp', 'last_name' => 'Driver', 'middle_initial' => 'Q', 'username' => $drvName, 'email' => "$drvName@example.test", 'phone' => '', 'license_number' => 'TMP-' . random_int(10000, 99999), 'license_expiry' => '', 'unit_no' => 'TMPU-' . random_int(1000, 9999)]);
 $page = $off->request('GET', 'officer_users.php');
-check(preg_match('/Temporary password: (Tr[0-9a-f]{8}9)/', $page['body'], $m) === 1, 'creating a driver account shows a one-time temporary password');
+check(preg_match('/id="secret-pw">(Tr[0-9a-f]{8}9)</', $page['body'], $m) === 1, 'creating a driver account shows a one-time temporary password');
 $temp = $m[1] ?? '';
 check((int)dbVal($pdo, 'SELECT COUNT(*) FROM drivers d JOIN users u ON u.id = d.user_id WHERE u.username = ? AND u.role = "driver"', [$drvName]) === 1, 'a driver account creates the matching driver profile');
 $newDriver = new Http($base);
 $r = $newDriver->login($drvName, $temp);
 check($r['status'] === 302 && str_contains($r['location'], 'driver_dashboard.php'), 'the new driver can log in with the temporary password');
 
-$r = $off->post('officer_users.php', ['action' => 'create', 'role' => 'driver', 'full_name' => 'No License', 'username' => $drvName . 'x', 'email' => "x$drvName@example.test", 'license_number' => '', 'default_unit_id' => '0']);
+$r = $off->post('officer_users.php', ['action' => 'create', 'role' => 'driver', 'first_name' => 'No', 'last_name' => 'License', 'username' => $drvName . 'x', 'email' => "x$drvName@example.test", 'license_number' => '', 'unit_no' => 'TMPU2']);
 check((int)dbVal($pdo, 'SELECT COUNT(*) FROM users WHERE username = ?', [$drvName . 'x']) === 0, 'a driver cannot be created without a license number');
-$off->post('officer_users.php', ['action' => 'create', 'role' => 'wizard', 'full_name' => 'Bad Role', 'username' => $drvName . 'y', 'email' => "y$drvName@example.test"]);
+$off->post('officer_users.php', ['action' => 'create', 'role' => 'wizard', 'first_name' => 'Bad', 'last_name' => 'Role', 'username' => $drvName . 'y', 'email' => "y$drvName@example.test"]);
 check((int)dbVal($pdo, 'SELECT COUNT(*) FROM users WHERE username = ?', [$drvName . 'y']) === 0, 'an unknown role is refused');
 
 // Non-officers cannot use the officer endpoint, even with a valid token.
 $pass1 = $clients['passenger'];
 $tok = $pass1->csrf('account.php');
-$r = $pass1->request('POST', 'officer_users.php', ['csrf_token' => $tok, 'action' => 'create', 'role' => 'officer', 'full_name' => 'Evil', 'username' => 'tmp_evil', 'email' => 'tmp_evil@example.test']);
+$r = $pass1->request('POST', 'officer_users.php', ['csrf_token' => $tok, 'action' => 'create', 'role' => 'officer', 'first_name' => 'Evil', 'last_name' => 'Person', 'username' => 'tmp_evil', 'email' => 'tmp_evil@example.test']);
 check($r['status'] === 403 && (int)dbVal($pdo, 'SELECT COUNT(*) FROM users WHERE username = "tmp_evil"') === 0, 'a passenger cannot create accounts through officer_users.php');
 $r = $off->request('POST', 'officer_users.php', ['action' => 'toggle', 'user_id' => 1]);
 check((int)dbVal($pdo, 'SELECT is_active FROM users WHERE username = "officer1"') === 1, 'an officer POST without a CSRF token changes nothing');
@@ -201,7 +201,7 @@ $pdo->rollBack();
 // Password reset
 $off->post('officer_users.php', ['action' => 'reset', 'user_id' => $tmpId]);
 $page = $off->request('GET', 'officer_users.php');
-preg_match('/New temporary password for .*?: (Tr[0-9a-f]{8}9)/', $page['body'], $m);
+preg_match('/id="secret-pw">(Tr[0-9a-f]{8}9)</', $page['body'], $m);
 check((new Http($base))->login($tmp, 'Secret123')['status'] === 200 && (new Http($base))->login($tmp, $m[1] ?? 'x')['status'] === 302, 'password reset replaces the old password');
 
 echo PHP_EOL . "== Account page ==" . PHP_EOL;
@@ -210,13 +210,14 @@ $me->post('account.php', ['action' => 'password', 'current_password' => 'not-it'
 check((new Http($base))->login($tmp, 'NewSecret99')['status'] === 200, 'password change needs the right current password');
 $me->post('account.php', ['action' => 'password', 'current_password' => $m[1] ?? '', 'new_password' => 'NewSecret99', 'confirm_password' => 'NewSecret99']);
 check((new Http($base))->login($tmp, 'NewSecret99')['status'] === 302, 'a user can change their own password');
-$me->post('account.php', ['action' => 'profile', 'full_name' => 'Renamed Person', 'phone' => '0917 123 4567']);
+$me->post('account.php', ['action' => 'profile', 'first_name' => 'Renamed', 'last_name' => 'Person', 'middle_initial' => '', 'phone' => '0917 123 4567']);
 check(dbVal($pdo, 'SELECT full_name FROM users WHERE username = ?', [$tmp]) === 'Renamed Person', 'a user can update their profile');
 
 echo '(requireApiRole() is exercised by the Phase 3 endpoints.)' . PHP_EOL;
 
 // ---- cleanup
 $pdo->exec("DELETE FROM users WHERE username LIKE 'tmp\\_%'");
+$pdo->exec("DELETE FROM tricycle_units WHERE body_number LIKE 'TMPU%'");
 $pdo->prepare('DELETE FROM login_attempts WHERE attempted_at >= ?')->execute([$started]);
 
 echo PHP_EOL . "Result: $pass passed, $fail failed." . PHP_EOL;

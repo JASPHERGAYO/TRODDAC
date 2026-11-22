@@ -80,3 +80,10 @@ input.invalid { border-color: var(--danger); }
 
 select { width: 100%; padding: .7rem .8rem; font-size: 1rem; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); }
 select:focus { outline: 3px solid rgba(31, 111, 235, .25); border-color: var(--accent); }
+
+/* sign-up / login: name row and mobile comfort */
+.name-row { display: flex; gap: 10px; }
+.name-row .grow { flex: 1; min-width: 0; }
+.name-row .mi { width: 82px; flex: none; }
+input, select, textarea { font-size: 16px; }   /* stops iOS zooming into fields */
+@media (max-width: 420px) { .card { padding: 1.4rem 1.1rem; } body { padding: 1rem; } }

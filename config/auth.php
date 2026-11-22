@@ -35,6 +35,22 @@ function firstChar(string $text): string
     return preg_match('/^./us', $text, $m) ? $m[0] : substr($text, 0, 1);
 }
 
+function textUpper(string $text): string
+{
+    return function_exists('mb_strtoupper') ? mb_strtoupper($text, 'UTF-8') : strtoupper($text);
+}
+
+function textLower(string $text): string
+{
+    return function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
+}
+
+/** First $max characters of a UTF-8 string. */
+function textCut(string $text, int $max): string
+{
+    return preg_match('/^.{0,' . $max . '}/us', $text, $m) ? $m[0] : substr($text, 0, $max);
+}
+
 /** Number of characters (not bytes) in a UTF-8 string. */
 function charLength(string $text): int
 {
