@@ -29,6 +29,9 @@ return [
         'center_lng' => 120.9367,
         'radius_km'  => 25,
     ],
+    // An available booking nobody accepts within this many minutes is closed (the passenger can book again).
+    'booking_expiry_minutes' => 15,
+
     'min_trip_km' => 0.1,
     'max_trip_km' => 30,
 

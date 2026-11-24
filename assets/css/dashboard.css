@@ -314,3 +314,8 @@ dialog.modal[open] { display: flex; flex-direction: column; }
 .fare-preview div { background: #fff; border-radius: 10px; padding: .5rem .2rem; }
 .fare-preview b { display: block; }
 .fare-preview span { font-size: .76rem; color: var(--muted); }
+
+.pill.available { background: #fff1d6; color: #9a6400; }
+.avail-card .btn { flex: 1 1 140px; }
+.avail-card .big { font-size: 1.15rem; font-weight: 700; }
+.blocked-note { text-align: center; color: var(--muted); padding: 1rem .5rem; font-size: .93rem; }

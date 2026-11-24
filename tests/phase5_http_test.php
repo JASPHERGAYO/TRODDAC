@@ -68,7 +68,7 @@ function rows(string $sql, array $p = []): array { global $pdo; $st = $pdo->prep
 function run(string $sql, array $p = []): void { global $pdo; $pdo->prepare($sql)->execute($p); }
 $has = static fn(string $hay, string $needle) => str_contains($hay, $needle);
 
-if ((int)val("SELECT COUNT(*) FROM bookings WHERE status IN ('pending','assigned','en_route','in_progress')") > 0) {
+if ((int)val("SELECT COUNT(*) FROM bookings WHERE status IN ('available','assigned','en_route','in_progress')") > 0) {
     fwrite(STDERR, "There are open bookings. Finish or delete them before running this test." . PHP_EOL);
     exit(2);
 }
@@ -200,7 +200,7 @@ check($has($PA->form('passenger_report.php', ['subject' => 'Hi', 'message' => 's
 $r = $PA->form('passenger_report.php', ['subject' => 'Another valid title', 'message' => 'tiny'] + $rep);
 check($has($r['text'], 'Describe what happened'), 'a too-short message is explained');
 $pid2 = (int)val('SELECT id FROM users WHERE username = "passenger2"');
-run("INSERT INTO bookings (passenger_id, pickup_label, pickup_latitude, pickup_longitude, dest_label, dest_latitude, dest_longitude, distance_km, status, cancel_reason) VALUES (?, 'A', 14.33, 120.94, 'B', 14.34, 120.97, 3.5, 'pending', NULL)", [$pid2]);
+run("INSERT INTO bookings (passenger_id, pickup_label, pickup_latitude, pickup_longitude, dest_label, dest_latitude, dest_longitude, distance_km, status, cancel_reason) VALUES (?, 'A', 14.33, 120.94, 'B', 14.34, 120.97, 3.5, 'available', NULL)", [$pid2]);
 $foreign = (int)$pdo->lastInsertId();
 $r = $PA->form('passenger_report.php', ['booking_id' => (string)$foreign, 'subject' => 'About a trip that is not mine', 'message' => 'This should not be accepted at all.'] + $rep);
 check($has($r['text'], 'one of your own trips'), "a passenger cannot attach someone else's trip");

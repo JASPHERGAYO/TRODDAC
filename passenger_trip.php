@@ -1,12 +1,14 @@
 <?php
 require __DIR__ . '/config/auth.php';
 require __DIR__ . '/config/layout.php';
+require __DIR__ . '/lib/Bookings.php';
 $user = requireRole(['passenger']);
 $pdo  = db();
+Bookings::expireStale($pdo);
 
 $id = (int)($_GET['id'] ?? 0);
 if ($id === 0) {
-    $st = $pdo->prepare("SELECT id FROM bookings WHERE passenger_id = ? AND status IN ('pending','assigned','en_route','in_progress') ORDER BY id DESC LIMIT 1");
+    $st = $pdo->prepare("SELECT id FROM bookings WHERE passenger_id = ? AND status IN ('available','assigned','en_route','in_progress') ORDER BY id DESC LIMIT 1");
     $st->execute([$user['id']]);
     $id = (int)$st->fetchColumn();
     if ($id === 0) {

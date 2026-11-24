@@ -24,20 +24,24 @@ Change these passwords (My account page) before using real data.
 
 ## Tests
 ```
-D:\xampp\php\php.exe database\verify.php                                  # 45 database tests
+D:\xampp\php\php.exe database\verify.php                                  # 48 database tests
 D:\xampp\php\php.exe tests\phase2_http_test.php http://localhost/troddac  # 71 login / role tests
-D:\xampp\php\php.exe tests\phase3_http_test.php http://localhost/troddac  # 67 booking / dispatch / driver tests
+D:\xampp\php\php.exe tests\phase3_http_test.php http://localhost/troddac  # 85 booking / driver-accept tests
 D:\xampp\php\php.exe tests\phase4_engine_test.php http://localhost/troddac # 50 route assignment engine tests
 D:\xampp\php\php.exe tests\phase5_http_test.php http://localhost/troddac  # 84 accounts / reports / fare rate tests
+D:\xampp\php\php.exe tests\phase6_claim_test.php http://localhost/troddac  # 29 booking-claim / race-condition tests
 ```
 They clean up after themselves (the Phase 3 test needs the database to have no open bookings). Use the real folder name in the URL.
 The Phase 3 test works offline too: without internet the road distance falls back to a straight-line estimate.
 
-## Booking flow (Module A)
-1. **Passenger** (`passenger_book.php`): taps *Use my location* (GPS) or the map for the pickup, picks the destination on the map or by search, sees the road route, distance and fare, then requests a tricycle. Only one open booking at a time.
-2. **Operator** (`operator_dispatch.php`): the request appears within a few seconds with a sound. The operator picks a driver (nearest first) and a unit and assigns it.
-3. **Driver** (`driver_dashboard.php`): goes *Online* (this starts GPS sharing). The assigned booking appears on the dashboard with the passenger, pickup, drop-off, route map and buttons: *On my way*, *Picked up*, *Decline*, *Complete trip*.
-4. **Passenger** (`passenger_trip.php`): follows the status and the tricycle's live position on the map, and can cancel until the trip starts.
+## Booking flow (Module A) - drivers accept bookings
+1. **Passenger** (`passenger_book.php`): taps *Use my location* (GPS) or the map for the pickup, picks the destination, sees the road route, distance and fare, then requests a tricycle. The booking is saved as **available** at once. Only one open booking at a time; if no driver accepts within 15 minutes (`booking_expiry_minutes` in `config/config.php`) it is closed and the passenger can book again.
+2. **Every online driver** sees it on the **Available bookings** list of their dashboard within a few seconds (with a sound), with the pickup, drop-off, fare, distance and how far the pickup is from them. They see only the passenger's first name until they accept.
+3. **The first driver to press Accept gets it.** The booking is assigned to that driver (with their unit) in one atomic database step and disappears from every other driver's list. Any driver who pressed Accept a moment too late sees "Sorry, another driver just accepted this booking."
+4. The accepted driver uses *On my way*, *Picked up* and *Complete trip* (or *Hand back*, which makes the booking available again for the other drivers; it is not offered to the driver who handed it back).
+5. **Passenger** (`passenger_trip.php`) follows the status and the tricycle on the map and can cancel until the trip starts.
+- **Operators no longer dispatch.** They can monitor trips (**Trips**) and official routes (**Routes**) read-only.
+- A driver who is offline, on a trip, has no unit, or is on (or about to start) an official route is not shown bookings and cannot accept one.
 
 ## Accounts, reports and fare rates (Phase 5)
 - **Passenger sign-up** (`register.php`, public): First name, M.I., Last name, username, email, mobile, password. Officers cannot create passengers; passengers create their own.
@@ -63,9 +67,8 @@ After you copy new files, run `D:\xampp\php\php.exe database\migrate.php migrate
 
 ## Things to know
 - **Internet is needed** for the map tiles (OpenStreetMap), address search (Nominatim) and road routing (OSRM demo server). Leaflet itself is bundled in `assets/vendor/leaflet`. Change the routing server in `config/config.php`.
-- **GPS only works on https or localhost.** On the XAMPP computer use `http://localhost/troddac`. To test on a phone over Wi-Fi use `https://<computer-ip>/troddac` (XAMPP's built-in https, accept the certificate warning). Without GPS the passenger can still tap the map and the driver can still be dispatched, but the driver's position is not shared.
+- **GPS only works on https or localhost.** On the XAMPP computer use `http://localhost/troddac`. To test on a phone over Wi-Fi use `https://<computer-ip>/troddac` (XAMPP's built-in https, accept the certificate warning). Without GPS the passenger can still tap the map and the driver can still accept bookings, but the driver's position is not shared.
 - Bookings must be inside the 25 km service circle around Dasmariñas (`service_area` in `config/config.php`).
-- Dispatch is manual by the operator, as in the specification. Drivers cannot pick up requests themselves.
 - The screens update by polling every 4 seconds.
 
 ## Accounts and roles

@@ -17,11 +17,11 @@ $status = $st->fetchColumn();
 if ($status === false) {
     apiFail('Booking not found.', 404);
 }
-if (!in_array($status, ['pending', 'assigned', 'en_route'], true)) {
+if (!in_array($status, ['available', 'assigned', 'en_route'], true)) {
     apiFail($status === 'in_progress' ? 'A trip that has already started cannot be cancelled.' : 'This booking is already finished.', 409);
 }
 try {
-    $up = $pdo->prepare("UPDATE bookings SET status = 'cancelled', cancel_reason = ? WHERE id = ? AND passenger_id = ? AND status IN ('pending','assigned','en_route')");
+    $up = $pdo->prepare("UPDATE bookings SET status = 'cancelled', cancel_reason = ? WHERE id = ? AND passenger_id = ? AND status IN ('available','assigned','en_route')");
     $up->execute([$reason, $id, $user['id']]);
 } catch (PDOException $e) {
     apiFail(dbErrorMessage($e), 409);

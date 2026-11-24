@@ -9,8 +9,8 @@
     const layers = { pickup: null, dest: null, driver: null, route: null, fitted: false, geoKey: '' };
     let current = null;
     let poller = null;
-    const STEP_INDEX = { pending: 0, assigned: 1, en_route: 2, in_progress: 3, completed: 4 };
-    const STEP_LABELS = ['Requested', 'Assigned', 'On the way', 'On trip', 'Arrived'];
+    const STEP_INDEX = { available: 0, assigned: 1, en_route: 2, in_progress: 3, completed: 4 };
+    const STEP_LABELS = ['Requested', 'Accepted', 'On the way', 'On trip', 'Arrived'];
 
     function renderSteps(status) {
         const box = $('steps');
@@ -69,15 +69,16 @@
         renderSteps(b.status);
 
         const headline = {
-            pending: 'We are finding a tricycle for you. Keep this page open.',
+            available: 'Your request is now visible to every online driver. The first driver to accept it will come to you.',
             assigned: 'A driver has accepted your booking and will head to your pickup.',
             en_route: 'Your driver is on the way.',
             in_progress: 'Enjoy your ride. You will arrive soon.',
             completed: 'You have arrived. Thank you for riding with TRODDAC.',
             cancelled: 'This booking was cancelled.',
-            rejected: 'Sorry, no tricycle was available. ' + (b.cancel_reason || ''),
+            rejected: 'Sorry, no driver was available. ' + (b.cancel_reason || ''),
         }[b.status] || '';
-        $('headline').textContent = headline;
+        $('headline').textContent = headline + (b.status === 'available' && b.online_drivers !== undefined
+            ? ' ' + b.online_drivers + ' driver' + (b.online_drivers === 1 ? ' is' : 's are') + ' online now. This request closes in ' + b.expires_in_min + ' min if nobody accepts it.' : '');
 
         $('kv').innerHTML =
             '<dt>From</dt><dd>' + esc(b.pickup.label) + '</dd>' +
@@ -89,11 +90,11 @@
         renderDriver(b);
         drawMap(b);
 
-        const cancellable = ['pending', 'assigned', 'en_route'].includes(b.status);
+        const cancellable = ['available', 'assigned', 'en_route'].includes(b.status);
         $('cancel').hidden = !cancellable;
-        $('again').hidden = b.live || b.status === 'pending';
+        $('again').hidden = b.live || b.status === 'available';
 
-        if (!['pending', 'assigned', 'en_route', 'in_progress'].includes(b.status) && poller) { poller.stop(); poller = null; }
+        if (!['available', 'assigned', 'en_route', 'in_progress'].includes(b.status) && poller) { poller.stop(); poller = null; }
     }
 
     async function load() {

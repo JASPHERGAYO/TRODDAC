@@ -69,15 +69,17 @@ $newBooking = function (int $passenger, float $km = 4.5) use ($pdo): int {
                  VALUES (?, 'Home', 14.3294, 120.9367, 'Salawag', 14.34, 120.97, ?)", [$passenger, $km]);
     return (int)$pdo->lastInsertId();
 };
+$userOfDriver = fn(int $driver) => (int)val($pdo, 'SELECT user_id FROM drivers WHERE id = ?', [$driver]);
+// A driver accepts a booking for themselves, so the person making the change is the driver's own user.
 $assign = fn(int $booking, int $driver, int $unit) => exec_($pdo,
-    "UPDATE bookings SET status='assigned', driver_id=?, unit_id=?, assigned_by=? WHERE id=?", [$driver, $unit, $GLOBALS['operator'], $booking]);
+    "UPDATE bookings SET status='assigned', driver_id=?, unit_id=?, assigned_by=? WHERE id=?", [$driver, $unit, $GLOBALS['userOfDriver']($driver), $booking]);
 $setStatus = fn(int $booking, string $status) => exec_($pdo, 'UPDATE bookings SET status=? WHERE id=?', [$status, $booking]);
 $driverStatus = fn(int $d) => (string)val($pdo, 'SELECT status FROM drivers WHERE id=?', [$d]);
 $newAssignment = fn(int $route, int $driver, ?int $unit, string $from, string $to) => exec_($pdo,
     "INSERT INTO route_assignments (route_id, driver_id, unit_id, start_datetime, end_datetime) VALUES (?,?,?,?,?)", [$route, $driver, $unit, $from, $to]);
 
 $pdo->beginTransaction();
-exec_($pdo, 'SET @app_user_id = ?', [$operator]);
+exec_($pdo, 'SET @app_user_id = ?', [$uid('driver1')]);
 
 echo "== Fare matrix ==" . PHP_EOL;
 report((float)val($pdo, 'SELECT fn_calculate_fare(4.5, ?)', [$matrix]) === 60.00, 'fare for 4.5 km = 60.00 (25 base + 3.5 km x 10)');
@@ -90,17 +92,21 @@ echo PHP_EOL . "== Module A: bookings ==" . PHP_EOL;
 expectError('an operator cannot create a booking', 'TRD-E201', fn() => $newBooking($operator));
 $b1 = expectOk('a passenger can create a booking', fn() => $newBooking($p1));
 $row = $pdo->query("SELECT * FROM bookings WHERE id = $b1")->fetch();
-report($row && $row['status'] === 'pending' && (float)$row['estimated_fare'] === 60.00 && str_starts_with($row['booking_code'], 'TRD'),
-    'booking gets a code, status pending and server-side fare 60.00');
+report($row && $row['status'] === 'available' && (float)$row['estimated_fare'] === 60.00 && str_starts_with($row['booking_code'], 'TRD'),
+    'booking gets a code, status available and server-side fare 60.00');
 expectError('a booking cannot be inserted already assigned', 'TRD-E202', fn() => exec_($pdo,
     "INSERT INTO bookings (passenger_id, pickup_label, pickup_latitude, pickup_longitude, dest_label, dest_latitude, dest_longitude, distance_km, status, driver_id, unit_id)
      VALUES (?, 'A', 14.3, 120.9, 'B', 14.3, 120.9, 2, 'assigned', ?, ?)", [$p1, $d1, $u1]));
 expectError('an offline driver cannot be assigned', 'TRD-E102', fn() => $assign($b1, $d1, $u1));
 exec_($pdo, "UPDATE drivers SET status='online' WHERE id IN (?,?,?,?)", [$d1, $d2, $d3, $d4]);
-expectOk('an online driver can be assigned by the operator', fn() => $assign($b1, $d1, $u1));
+expectError('an operator cannot assign a booking (only the driver can accept it)', 'TRD-E205', fn() => exec_($pdo,
+    "UPDATE bookings SET status='assigned', driver_id=?, unit_id=?, assigned_by=? WHERE id=?", [$d1, $u1, $operator, $b1]));
+expectError('a driver cannot accept a booking on behalf of another driver', 'TRD-E205', fn() => exec_($pdo,
+    "UPDATE bookings SET status='assigned', driver_id=?, unit_id=?, assigned_by=? WHERE id=?", [$d1, $u1, $userOfDriver($d2), $b1]));
+expectOk('an online driver can accept an available booking', fn() => $assign($b1, $d1, $u1));
 report($driverStatus($d1) === 'on_trip', 'driver becomes on_trip automatically');
-report((int)val($pdo, 'SELECT COUNT(*) FROM booking_status_history WHERE booking_id = ? AND changed_by = ?', [$b1, $operator]) >= 2,
-    'booking history records the operator who acted');
+report((int)val($pdo, 'SELECT COUNT(*) FROM booking_status_history WHERE booking_id = ? AND changed_by = ?', [$b1, $uid('driver1')]) >= 2,
+    'booking history records the driver who acted');
 
 $b2 = $newBooking($p2);
 expectError('a driver on a trip cannot take a second trip', 'TRD-E102', fn() => $assign($b2, $d1, $u2));
@@ -140,14 +146,16 @@ expectOk('in_progress -> completed', fn() => $setStatus($b1, 'completed'));
 $done = $pdo->query("SELECT final_fare, completed_at FROM bookings WHERE id = $b1")->fetch();
 report((float)$done['final_fare'] === 60.00 && $done['completed_at'] !== null, 'completion sets final fare and time');
 report($driverStatus($d1) === 'online', 'completing a trip returns the driver to online');
-expectError('a completed booking cannot be reopened', 'TRD-E203', fn() => $setStatus($b1, 'pending'));
+expectError('a completed booking cannot be reopened', 'TRD-E203', fn() => $setStatus($b1, 'available'));
 
 $b3 = $newBooking($p1);
 $assign($b3, $d4, $u4);
-expectOk('operator can re-assign while status is assigned', fn() => exec_($pdo, 'UPDATE bookings SET driver_id=?, unit_id=? WHERE id=?', [$d1, $u1, $b3]));
-report($driverStatus($d1) === 'on_trip' && $driverStatus($d4) === 'online', 're-assigning swaps the on_trip / online status');
-$setStatus($b3, 'pending');
-report($driverStatus($d1) === 'online' && val($pdo, 'SELECT driver_id FROM bookings WHERE id = ?', [$b3]) === null, 'un-assigning clears driver and unit');
+expectError('nobody can swap the driver after a driver has accepted', 'TRD-E206', fn() => exec_($pdo, 'UPDATE bookings SET driver_id=?, unit_id=? WHERE id=?', [$d1, $u1, $b3]));
+$setStatus($b3, 'available');
+report($driverStatus($d4) === 'online' && val($pdo, 'SELECT driver_id FROM bookings WHERE id = ?', [$b3]) === null, 'handing a booking back makes it available again and frees the driver');
+expectOk('another driver can then accept the same booking', fn() => $assign($b3, $d1, $u1));
+$b4 = $newBooking($p2);
+expectError('an available booking cannot hold a driver', 'TRD-E202', fn() => exec_($pdo, "UPDATE bookings SET driver_id=? WHERE id=?", [$d2, $b4]));
 
 echo PHP_EOL . "== Other rules ==" . PHP_EOL;
 exec_($pdo, 'INSERT INTO driver_locations (driver_id, booking_id, latitude, longitude, recorded_at) VALUES (?, NULL, 14.3311, 120.9402, NOW())', [$d1]);

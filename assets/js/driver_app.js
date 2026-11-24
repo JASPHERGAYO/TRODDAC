@@ -1,4 +1,4 @@
-// Driver screen: availability switch, GPS sharing, incoming booking from dispatch, trip actions.
+// Driver screen: availability switch, GPS sharing, available bookings (accept directly), trip actions.
 (function () {
     const TRD = window.TRD;
     const M = TRD.map;
@@ -7,7 +7,9 @@
 
     const map = M.create('map');
     const layers = { pickup: null, dest: null, route: null, me: null, key: '', okey: '', oOrigin: null, oDest: null, oRoute: null };
-    const state = { availability: 'offline', booking: null, lastBookingId: null, watchId: null, lastSent: 0, lastPos: null, busy: false };
+    const state = { availability: 'offline', booking: null, lastBookingId: null, watchId: null, lastSent: 0, lastPos: null, busy: false,
+        available: [], knownAvail: null, availKey: '', claiming: false };
+    const availMarkers = new Map();
 
     /* ---------- GPS sharing ---------- */
     function gpsStatus(text, cls) {
@@ -71,8 +73,8 @@
             card.hidden = true;
             $('waiting').hidden = false;
             $('waiting').textContent = state.availability === 'offline'
-                ? 'You are offline. Go online to receive bookings from dispatch.'
-                : 'Waiting for dispatch to send you a booking...';
+                ? 'You are offline. Go online to see and accept bookings.'
+                : 'No bookings right now. New requests appear here the moment a passenger books.';
             return;
         }
         $('waiting').hidden = true;
@@ -98,7 +100,7 @@
         if (b.status === 'assigned') {
             actions.push(['on_the_way', 'On my way', 'btn']);
             actions.push(['picked_up', 'Picked up', 'btn ok']);
-            actions.push(['decline', 'Decline', 'btn ghost']);
+            actions.push(['decline', 'Hand back', 'btn ghost']);
         } else if (b.status === 'en_route') {
             actions.push(['picked_up', 'Passenger picked up', 'btn ok']);
         } else if (b.status === 'in_progress') {
@@ -112,7 +114,7 @@
         const btn = e.target.closest('button[data-action]');
         if (!btn || !state.booking || state.busy) return;
         const action = btn.dataset.action;
-        if (action === 'decline' && !window.confirm('Decline this booking? Dispatch will send it to another driver.')) return;
+        if (action === 'decline' && !window.confirm('Hand this booking back? It becomes available for the other drivers.')) return;
         if (action === 'complete' && !window.confirm('Mark this trip as completed?')) return;
         state.busy = true;
         btn.disabled = true;
@@ -120,7 +122,7 @@
         state.busy = false;
         if (!data.ok) { TRD.toast(data.error || 'That did not work.', 'error'); }
         else if (action === 'complete') { TRD.toast('Trip completed. You are back online.', 'success'); }
-        else if (action === 'decline') { TRD.toast('Booking declined.', 'info'); }
+        else if (action === 'decline') { TRD.toast('Booking handed back to the other drivers.', 'info'); }
         load();
     });
 
@@ -165,6 +167,88 @@
         M.fit(map, (a.geometry.length > 1 ? a.geometry : [[a.origin.lat, a.origin.lng], [a.dest.lat, a.dest.lng]]), 16);
     }
 
+    /* ---------- available bookings (drivers accept them directly) ---------- */
+    function availCard(b, fresh) {
+        const away = b.away_km !== null ? ' &middot; ' + b.away_km.toFixed(1) + ' km from you' : '';
+        return '<div class="item avail-card' + (fresh ? ' alert-new' : '') + '" data-id="' + b.id + '">'
+            + '<div class="head"><b>' + esc(b.passenger) + '</b><span class="pill available">' + (b.waiting_min < 1 ? 'just now' : b.waiting_min + ' min ago') + '</span></div>'
+            + '<div class="route"><b>Pickup:</b> ' + esc(b.pickup.label) + '<br><b>Drop-off:</b> ' + esc(b.dest.label) + '</div>'
+            + '<div class="meta"><span class="big">' + TRD.money(b.fare) + '</span> &middot; ' + TRD.km(b.distance_km) + ' &middot; about ' + b.est_minutes + ' min' + away
+            + ' &middot; ' + b.passengers + ' rider' + (b.passengers === 1 ? '' : 's') + (b.notes ? '<br>Note: ' + esc(b.notes) : '') + '</div>'
+            + '<div class="actions"><button type="button" class="btn ok" data-claim="' + b.id + '">Accept booking</button>'
+            + '<button type="button" class="btn ghost" data-show="' + b.id + '">Show on map</button></div></div>';
+    }
+
+    function syncAvailMarkers(list) {
+        const ids = new Set(list.map((b) => b.id));
+        availMarkers.forEach((m, id) => { if (!ids.has(id)) { map.removeLayer(m); availMarkers.delete(id); } });
+        list.forEach((b) => {
+            if (!availMarkers.has(b.id)) availMarkers.set(b.id, M.marker(map, 'wait', 'P', b.pickup.lat, b.pickup.lng).bindTooltip(esc(b.pickup.label)));
+        });
+    }
+
+    function renderAvailable(data, hasBooking) {
+        const panel = $('available-panel');
+        const list = hasBooking ? [] : (data.available || []);
+        syncAvailMarkers(list);
+        if (hasBooking) { panel.hidden = true; return; }
+
+        // the "waiting" message explains an empty or blocked screen
+        if (data.blocked_reason) {
+            panel.hidden = true;
+            $('waiting').hidden = false;
+            $('waiting').textContent = data.blocked_reason;
+            state.knownAvail = null;
+            return;
+        }
+        $('waiting').hidden = list.length > 0;
+        if (!list.length) $('waiting').textContent = 'No bookings right now. New requests appear here the moment a passenger books.';
+        panel.hidden = list.length === 0;
+        $('a-count').textContent = list.length;
+
+        const known = state.knownAvail;                      // null on the first load: no alert for what is already there
+        const fresh = new Set(known === null ? [] : list.filter((b) => !known.has(b.id)).map((b) => b.id));
+        if (fresh.size) {
+            TRD.beep();
+            TRD.toast(fresh.size === 1 ? 'New booking available' : fresh.size + ' new bookings available', 'success');
+        }
+        document.title = list.length ? '(' + list.length + ') Bookings - TRODDAC' : 'Driver Dashboard - TRODDAC';
+        state.knownAvail = new Set(list.map((b) => b.id));
+
+        const key = list.map((b) => b.id + ':' + b.waiting_min + ':' + b.away_km).join('|');
+        if (key !== state.availKey) {
+            state.availKey = key;
+            if (!state.claiming) $('available').innerHTML = list.map((b) => availCard(b, fresh.has(b.id))).join('');
+        }
+        state.available = list;
+    }
+
+    $('available').addEventListener('click', async (e) => {
+        const show = e.target.closest('[data-show]');
+        if (show) {
+            const b = state.available.find((x) => x.id === parseInt(show.dataset.show, 10));
+            if (b) { map.setView([b.pickup.lat, b.pickup.lng], 16); $('map').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+            return;
+        }
+        const btn = e.target.closest('[data-claim]');
+        if (!btn || state.claiming) return;
+        const id = parseInt(btn.dataset.claim, 10);
+        state.claiming = true;
+        $('available').querySelectorAll('[data-claim]').forEach((x) => { x.disabled = true; });
+        btn.textContent = 'Accepting...';
+        const res = await TRD.api('driver_claim.php', { method: 'POST', body: { id } });
+        state.claiming = false;
+        if (res.ok) {
+            TRD.toast('Booking accepted. Head to the pickup.', 'success');
+        } else {
+            TRD.toast(res.error || 'Could not accept this booking.', 'error');
+            const card = $('available').querySelector('[data-id="' + id + '"]');
+            if (card && ['taken', 'cancelled', 'gone'].includes(res.code)) card.remove();   // it is no longer available to anyone
+        }
+        state.availKey = '';
+        load();
+    });
+
     /* ---------- polling ---------- */
     async function load() {
         const data = await TRD.api('driver_state.php');
@@ -177,17 +261,12 @@
         renderAvailability();
 
         const b = data.booking;
-        const isNew = Boolean(b) && b.status === 'assigned' && b.id !== state.lastBookingId;
-        if (isNew) {
-            TRD.beep();
-            TRD.toast('New booking from dispatch: ' + b.pickup.label, 'success');
-            document.title = '(1) New booking - TRODDAC';
-        } else if (!b) {
-            document.title = 'Driver Dashboard - TRODDAC';
-        }
+        const isNew = false;                                   // the driver just accepted it themselves
+        if (!b && !(data.available || []).length) document.title = 'Driver Dashboard - TRODDAC';
         state.lastBookingId = b ? b.id : state.lastBookingId;
         state.booking = b;
         renderBookingCard(b, isNew);
+        renderAvailable(data, Boolean(b));
         renderMap(b);
         renderOfficial(data.official || []);
         renderOfficialMap(b ? null : (data.official && data.official[0]) || null);

@@ -2,6 +2,7 @@
 // POST JSON {id, action}   action: on_the_way | picked_up | complete | decline
 require __DIR__ . '/../config/auth.php';
 require __DIR__ . '/../config/api.php';
+require __DIR__ . '/../lib/Bookings.php';
 $user = requireApiRole(['driver']);
 apiMustBePost();
 
@@ -18,7 +19,7 @@ $rules = [
     'on_the_way' => [['assigned'],              'en_route',    'You can only start heading to the pickup right after being assigned.'],
     'picked_up'  => [['assigned', 'en_route'],  'in_progress', 'The passenger can only be picked up after the booking is assigned.'],
     'complete'   => [['in_progress'],           'completed',   'Pick the passenger up before completing the trip.'],
-    'decline'    => [['assigned'],              'pending',     'A trip can only be declined before you head to the pickup.'],
+    'decline'    => [['assigned'],              'available',   'A trip can only be handed back before you head to the pickup.'],
 ];
 if (!isset($rules[$action])) {
     apiFail('Unknown action.');
@@ -26,6 +27,10 @@ if (!isset($rules[$action])) {
 [$from, $to, $message] = $rules[$action];
 
 $pdo = db();
+if ($action === 'decline') {
+    $res = Bookings::release($pdo, (int)$driver['id'], (int)$user['id'], $id);
+    $res['ok'] ? jsonOut(['ok' => true, 'status' => 'available']) : apiFail($res['message'], 409);
+}
 $st = $pdo->prepare('SELECT status FROM bookings WHERE id = ? AND driver_id = ?');
 $st->execute([$id, $driver['id']]);
 $status = $st->fetchColumn();

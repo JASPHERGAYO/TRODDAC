@@ -27,7 +27,7 @@ function roleNav(string $role): array
     $items = match ($role) {
         'passenger' => [['Home', 'home', 'passenger_dashboard.php'], ['Book', 'pin', 'passenger_book.php'], ['My trips', 'clock', 'passenger_history.php'], ['Report', 'flag', 'passenger_report.php']],
         'driver'    => [['Home', 'home', 'driver_dashboard.php']],
-        'operator'  => [['Home', 'home', 'operator_dashboard.php'], ['Dispatch', 'map', 'operator_dispatch.php'], ['Routes', 'clock', 'operator_assignments.php']],
+        'operator'  => [['Home', 'home', 'operator_dashboard.php'], ['Trips', 'map', 'operator_trips.php'], ['Routes', 'clock', 'operator_assignments.php']],
         'officer'   => [['Home', 'home', 'officer_dashboard.php'], ['Users', 'users', 'officer_users.php'], ['Routes', 'clock', 'operator_assignments.php'], ['Fares', 'coin', 'officer_fares.php'], ['Reports', 'flag', 'officer_reports.php']],
         default     => [],
     };

@@ -24,6 +24,14 @@ if (!$driver): ?>
             <button type="button" class="btn" id="avail-btn" disabled>...</button>
         </div>
 
+        <div class="panel glass" id="available-panel" hidden>
+            <div class="head" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                <h3 style="margin:0">Available bookings</h3><span class="pill available" id="a-count">0</span>
+            </div>
+            <p class="hint" id="a-note">The first driver to press Accept gets the booking.</p>
+            <div class="list" id="available" style="margin-top:10px"></div>
+        </div>
+
         <div class="panel glass empty" id="waiting">Loading...</div>
 
         <div class="panel glass item" id="booking" hidden>

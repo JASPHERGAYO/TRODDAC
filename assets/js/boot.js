@@ -11,8 +11,8 @@
     TRD.km = (n) => Number(n || 0).toFixed(2) + ' km';
 
     TRD.statusLabel = (s) => ({
-        pending: 'Waiting for a driver', assigned: 'Driver assigned', en_route: 'Driver on the way',
-        in_progress: 'On trip', completed: 'Completed', cancelled: 'Cancelled', rejected: 'No tricycle available',
+        available: 'Looking for a driver', pending: 'Looking for a driver', assigned: 'Driver accepted', en_route: 'Driver on the way',
+        in_progress: 'On trip', completed: 'Completed', cancelled: 'Cancelled', rejected: 'No driver available',
     }[s] || s);
 
     /** Calls /api/<path>. Always resolves to an object with ok, status and (on failure) error. */

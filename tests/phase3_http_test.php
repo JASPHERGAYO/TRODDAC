@@ -81,7 +81,7 @@ $pdo->exec('UPDATE rotation_settings SET auto_assign_enabled = 0');
 $pdo->exec('DELETE FROM login_attempts');
 $pdo->exec('DELETE FROM driver_locations');
 $pdo->exec("UPDATE drivers SET status = 'offline'");
-if ((int)val($pdo, "SELECT COUNT(*) FROM bookings WHERE status IN ('pending','assigned','en_route','in_progress')") > 0) {
+if ((int)val($pdo, "SELECT COUNT(*) FROM bookings WHERE status IN ('available','assigned','en_route','in_progress')") > 0) {
     fwrite(STDERR, "There are open bookings in the database. Finish or delete them before running this test." . PHP_EOL);
     exit(2);
 }
@@ -101,7 +101,8 @@ $route  = "route.php?plat={$pickup['lat']}&plng={$pickup['lng']}&dlat={$dest['la
 
 echo "== Endpoint guards ==" . PHP_EOL;
 check($anon->api($route)['http'] === 401, 'an anonymous visitor gets 401 from the API');
-check($P1->api('operator_action.php', 'POST', ['action' => 'reject', 'booking_id' => 1])['http'] === 403, 'a passenger cannot use the operator endpoint (403)');
+check($P1->api('driver_claim.php', 'POST', ['id' => 1])['http'] === 403 && $OP->api('driver_claim.php', 'POST', ['id' => 1])['http'] === 403, 'passengers and operators cannot accept bookings (403)');
+check($OP->api('operator_action.php', 'POST', ['action' => 'assign', 'booking_id' => 1, 'driver_id' => 1])['http'] === 404 && $OP->api('operator_queue.php')['http'] === 404, 'the operator dispatch endpoints no longer exist (404)');
 check($D1->api($route)['http'] === 403, 'a driver cannot use the passenger route endpoint (403)');
 check($P1->api('booking_create.php', 'POST', ['pickup' => $pickup, 'dest' => $dest], false)['http'] === 419, 'a booking without a CSRF token is refused (419)');
 check($P1->api('booking_create.php')['http'] === 405, 'booking_create only accepts POST (405)');
@@ -111,8 +112,11 @@ $page = $P1->page('passenger_book.php');
 check($page['status'] === 200 && str_contains($page['body'], 'assets/vendor/leaflet/leaflet.js') && str_contains($page['body'], 'passenger_book.js'), 'booking page loads Leaflet and its script');
 check(str_contains($page['body'], 'width=device-width, initial-scale=1'), 'pages declare the mobile viewport');
 check($D1->page('driver_dashboard.php')['status'] === 200 && str_contains($D1->page('driver_dashboard.php')['body'], 'driver_app.js'), 'driver dashboard loads its live script');
-check($OP->page('operator_dispatch.php')['status'] === 200, 'operator opens the dispatch screen');
-check($P1->page('operator_dispatch.php')['status'] === 403 && $D1->page('passenger_book.php')['status'] === 403, 'dispatch and booking screens are role-locked');
+$old = $OP->page('operator_dispatch.php');
+check($old['status'] === 302 && str_contains($old['location'], 'operator_dashboard.php'), 'the old dispatch page just forwards operators to their dashboard');
+$od = $OP->page('operator_dashboard.php');
+check($od['status'] === 200 && !str_contains($od['body'], 'Assign driver') && !str_contains($od['body'], 'operator_dispatch.php') && str_contains($od['body'], 'operator_trips.php'), 'the operator dashboard has no dispatch or assignment controls, only trip monitoring');
+check($OP->page('operator_trips.php')['status'] === 200 && $P1->page('operator_trips.php')['status'] === 403 && $D1->page('passenger_book.php')['status'] === 403, 'trip monitoring and booking screens are role-locked');
 $css = (string)file_get_contents(__DIR__ . '/../assets/css/dashboard.css');
 check(str_contains($css, '@media (min-width: 640px)') && str_contains($css, '@media (min-width: 1024px)') && str_contains($css, 'min-height: 44px'), 'CSS is mobile-first with tablet and desktop breakpoints and 44px touch targets');
 check(is_file(__DIR__ . '/../assets/vendor/leaflet/leaflet.js') && is_file(__DIR__ . '/../assets/vendor/leaflet/images/marker-icon.png'), 'Leaflet is bundled locally');
@@ -136,38 +140,60 @@ $db = row($pdo, 'SELECT * FROM bookings WHERE id = ?', [$b1]);
 check(abs((float)$db['distance_km'] - $r['distance_km']) < 0.01, 'distance is calculated by the server, not taken from the browser');
 check(abs((float)$db['estimated_fare'] - $expected) < 0.005, 'the fare is calculated by the server, not taken from the browser');
 check(!str_contains($db['dest_label'], '<') && !str_contains((string)$db['notes'], '<'), 'labels and notes are stripped of HTML tags');
-check($db['status'] === 'pending' && $db['driver_id'] === null && (int)$db['passenger_count'] === 2, 'new bookings are pending with no driver');
+check($db['status'] === 'available' && $db['driver_id'] === null && (int)$db['passenger_count'] === 2, 'new bookings are pending with no driver');
 check($P1->api('booking_create.php', 'POST', ['pickup' => $pickup, 'dest' => $dest])['http'] === 409, 'a second open booking is refused');
 $cur = $P1->api('booking_status.php?current=1');
-check(($cur['booking']['id'] ?? 0) === $b1 && $cur['booking']['status'] === 'pending', 'the passenger can read their current booking');
+check(($cur['booking']['id'] ?? 0) === $b1 && $cur['booking']['status'] === 'available', 'the passenger can read their current booking');
 check($P2->api('booking_status.php?id=' . $b1)['http'] === 404, "another passenger cannot read someone else's booking");
 check($P2->api('booking_cancel.php', 'POST', ['id' => $b1])['http'] === 404, "another passenger cannot cancel someone else's booking");
 
-echo PHP_EOL . "== Dispatch: operator assigns, driver sees it ==" . PHP_EOL;
-$q = $OP->api('operator_queue.php');
-check(count($q['pending'] ?? []) === 1 && $q['pending'][0]['id'] === $b1 && $q['pending'][0]['passenger']['name'] === 'Passenger One', 'the new booking appears in the operator queue');
-$a = $OP->api('operator_action.php', 'POST', ['action' => 'assign', 'booking_id' => $b1, 'driver_id' => $d1]);
-check(($a['ok'] ?? true) === false && str_contains($a['error'] ?? '', 'not online'), 'an offline driver cannot be assigned', json_encode($a));
-check($D1->api('driver_availability.php', 'POST', ['status' => 'online'])['ok'] === true, 'a driver can go online');
+echo PHP_EOL . "== Drivers see available bookings and accept them ==" . PHP_EOL;
+$s0 = $D1->api('driver_state.php');
+check(($s0['available'] ?? null) === [] && str_contains($s0['blocked_reason'] ?? '', 'offline'), 'an offline driver sees no bookings and is told to go online', json_encode($s0));
+$c0 = $D1->api('driver_claim.php', 'POST', ['id' => $b1]);
+check($c0['http'] === 409 && ($c0['code'] ?? '') === 'offline', 'an offline driver cannot accept a booking', json_encode($c0));
+check($D1->api('driver_availability.php', 'POST', ['status' => 'online'])['ok'] === true && $D2->api('driver_availability.php', 'POST', ['status' => 'online'])['ok'] === true, 'two drivers go online');
 $ping = $D1->api('driver_location.php', 'POST', ['lat' => 14.3300, 'lng' => 120.9380, 'speed' => 3.2, 'heading' => 90]);
 check($ping['ok'] === true && empty($ping['ignored']), 'a driver position ping is stored');
 check(($D1->api('driver_location.php', 'POST', ['lat' => 14.3301, 'lng' => 120.9381])['ignored'] ?? false) === true, 'pings faster than every 2 seconds are ignored');
-check(($D2->api('driver_location.php', 'POST', ['lat' => 14.3, 'lng' => 120.9])['ignored'] ?? false) === true, 'an offline driver\'s position is not stored');
 check($D1->api('driver_location.php', 'POST', ['lat' => 999, 'lng' => 0])['http'] === 422, 'an impossible position is refused');
-$q = $OP->api('operator_queue.php');
-$ids = array_column($q['drivers'], 'id');
-check(in_array($d1, $ids, true) && !in_array($d2, $ids, true), 'only online drivers are offered for dispatch');
-check(($q['pending'][0]['nearest'][0]['driver_id'] ?? 0) === $d1 && $q['pending'][0]['nearest'][0]['km'] < 1, 'dispatch suggests the nearest driver with the distance');
-$a = $OP->api('operator_action.php', 'POST', ['action' => 'assign', 'booking_id' => $b1, 'driver_id' => $d1]);
-check(($a['ok'] ?? false) === true, 'the operator assigns the driver (unit defaults to the driver\'s own)', json_encode($a));
+$D2->api('driver_location.php', 'POST', ['lat' => 14.3500, 'lng' => 120.9800]);
+
+$s1 = $D1->api('driver_state.php');
+$s2 = $D2->api('driver_state.php');
+$av = $s1['available'][0] ?? [];
+check(count($s1['available']) === 1 && $av['id'] === $b1 && $av['passenger'] === 'Passenger' && $av['fare'] > 0 && count($av['pickup']) === 3, 'AN ONLINE DRIVER SEES THE NEW BOOKING RIGHT AWAY (first name only, fare, pickup, drop-off)', json_encode($s1['available'] ?? null));
+check(count($s2['available']) === 1 && $s2['available'][0]['id'] === $b1, 'EVERY online driver sees the same available booking');
+check(!isset($av['phone']) && !str_contains(json_encode($av), 'Passenger One') && !str_contains(json_encode($av), '0917'), 'the passenger\'s surname and phone stay hidden until a driver accepts');
+check(($av['away_km'] ?? 99) < 1 && ($s2['available'][0]['away_km'] ?? 0) > 3, 'each driver sees how far the pickup is from their own position');
+$vis = $OP->api('trips_overview.php');
+check(count($vis['open'] ?? []) === 1 && ($vis['online_drivers'] ?? 0) === 2, 'the operator can see the open booking and online drivers (read-only)');
+$ps = $P1->api('booking_status.php?id=' . $b1);
+check($ps['booking']['status'] === 'available' && $ps['booking']['online_drivers'] === 2 && $ps['booking']['expires_in_min'] > 0, 'the passenger sees that online drivers can see the request');
+
+$cl = $D1->api('driver_claim.php', 'POST', ['id' => $b1]);
+check(($cl['ok'] ?? false) === true && $cl['http'] === 200, 'the first driver accepts the booking', json_encode($cl));
+$db = row($pdo, 'SELECT status, driver_id, unit_id, assigned_by, assigned_at, estimated_fare FROM bookings WHERE id = ?', [$b1]);
+check($db['status'] === 'assigned' && (int)$db['driver_id'] === $d1 && (int)$db['unit_id'] === (int)val($pdo, 'SELECT default_unit_id FROM drivers WHERE id = ?', [$d1])
+      && (int)$db['assigned_by'] === (int)val($pdo, 'SELECT user_id FROM drivers WHERE id = ?', [$d1]) && $db['assigned_at'] !== null, 'it is assigned to that driver with their unit, instantly');
 check(val($pdo, 'SELECT status FROM drivers WHERE id = ?', [$d1]) === 'on_trip', 'the driver becomes on_trip automatically');
-check($OP->api('operator_action.php', 'POST', ['action' => 'assign', 'booking_id' => $b1, 'driver_id' => $d1])['http'] === 409, 'assigning an already-assigned booking is refused');
+$s2 = $D2->api('driver_state.php');
+check($s2['available'] === [], 'the booking disappears from the other driver\'s list');
+$cl2 = $D2->api('driver_claim.php', 'POST', ['id' => $b1]);
+check($cl2['http'] === 409 && ($cl2['code'] ?? '') === 'taken' && str_contains($cl2['error'] ?? '', 'another driver just accepted'), 'a second driver pressing Accept gets a clean "just taken" message', json_encode($cl2));
+check((int)val($pdo, 'SELECT driver_id FROM bookings WHERE id = ?', [$b1]) === $d1 && val($pdo, 'SELECT status FROM drivers WHERE id = ?', [$d2]) === 'online', 'the loser changed nothing and stays online');
+$again = $D1->api('driver_claim.php', 'POST', ['id' => $b1]);
+check(($again['ok'] ?? false) === true && ($again['code'] ?? '') === 'already_yours', 'pressing Accept twice is harmless (it stays with the same driver)');
+foreach ([0, 999999, -3] as $bad) {
+    $r = $D2->api('driver_claim.php', 'POST', ['id' => $bad]);
+    check($r['http'] === 404 && ($r['ok'] ?? true) === false, "accepting a booking that does not exist ($bad) is a clean 404");
+}
+$r = $D2->api('driver_claim.php', 'POST', ['id' => '1 OR 1=1']);
+check(($r['ok'] ?? true) === false && $r['http'] === 404, 'an injected id is treated as a number and refused');
 
 $ds = $D1->api('driver_state.php');
-check(($ds['booking']['id'] ?? 0) === $b1 && $ds['booking']['status'] === 'assigned' && $ds['booking']['passenger']['name'] === 'Passenger One', 'THE BOOKING APPEARS ON THE DRIVER\'S DASHBOARD');
+check(($ds['booking']['id'] ?? 0) === $b1 && $ds['booking']['status'] === 'assigned' && $ds['booking']['passenger']['name'] === 'Passenger One', 'THE ACCEPTED BOOKING IS NOW ON THE DRIVER\'S DASHBOARD (full passenger details)');
 check(count($ds['booking']['geometry'] ?? []) >= 2 && $ds['availability'] === 'on_trip', 'the driver gets the route line and an on_trip status');
-$other = $D2->api('driver_state.php');
-check(array_key_exists('booking', $other) && $other['booking'] === null, 'other drivers do not see that booking');
 check($D2->api('driver_action.php', 'POST', ['id' => $b1, 'action' => 'on_the_way'])['http'] === 404, 'another driver cannot act on the booking');
 $ps = $P1->api('booking_status.php?id=' . $b1);
 check($ps['booking']['status'] === 'assigned' && $ps['booking']['driver']['plate'] === 'TRC-0001' && $ps['booking']['driver']['lat'] !== null && $ps['booking']['driver']['fresh'] === true, 'the passenger sees the driver, unit plate and live position');
@@ -175,12 +201,14 @@ check(isset($ps['booking']['driver']['distance_km']), 'the passenger sees how fa
 
 echo PHP_EOL . "== Driver actions ==" . PHP_EOL;
 check($D1->api('driver_action.php', 'POST', ['id' => $b1, 'action' => 'complete'])['http'] === 409, 'a trip cannot be completed before pickup');
-check($D1->api('driver_action.php', 'POST', ['id' => $b1, 'action' => 'decline'])['ok'] === true, 'a driver can decline an assigned booking');
-check(val($pdo, 'SELECT status FROM bookings WHERE id = ?', [$b1]) === 'pending' && val($pdo, 'SELECT status FROM drivers WHERE id = ?', [$d1]) === 'online', 'declining returns the booking to the queue and frees the driver');
-check(count($OP->api('operator_queue.php')['pending']) === 1, 'the declined booking is back in the operator queue');
-$OP->api('operator_action.php', 'POST', ['action' => 'assign', 'booking_id' => $b1, 'driver_id' => $d1]);
+check($D1->api('driver_action.php', 'POST', ['id' => $b1, 'action' => 'decline'])['ok'] === true, 'a driver can hand an accepted booking back');
+check(val($pdo, 'SELECT status FROM bookings WHERE id = ?', [$b1]) === 'available' && val($pdo, 'SELECT driver_id FROM bookings WHERE id = ?', [$b1]) === null
+      && val($pdo, 'SELECT status FROM drivers WHERE id = ?', [$d1]) === 'online', 'handing back makes the booking available again and frees the driver');
+check(count($D2->api('driver_state.php')['available']) === 1 && $D1->api('driver_state.php')['available'] === [], 'the other driver sees it again; the driver who handed it back is not offered it');
+check(($D1->api('driver_claim.php', 'POST', ['id' => $b1])['ok'] ?? false) === true, 'driver 1 accepts it again to continue the trip');
 check($D1->api('driver_action.php', 'POST', ['id' => $b1, 'action' => 'on_the_way'])['ok'] === true, 'driver: on my way');
 check($P1->api('booking_status.php?id=' . $b1)['booking']['status'] === 'en_route', 'the passenger sees "on the way"');
+check($D1->api('driver_action.php', 'POST', ['id' => $b1, 'action' => 'decline'])['http'] === 409, 'a booking cannot be handed back once the driver is on the way');
 $off = $D1->api('driver_availability.php', 'POST', ['status' => 'offline']);
 check(($off['ok'] ?? true) === false && str_contains($off['error'] ?? '', 'live passenger trip'), 'a driver cannot go offline in the middle of a trip', json_encode($off));
 check($D1->api('driver_action.php', 'POST', ['id' => $b1, 'action' => 'picked_up'])['ok'] === true, 'driver: passenger picked up');
@@ -192,35 +220,41 @@ check($done['status'] === 'completed' && (float)$done['final_fare'] === (float)$
 check(val($pdo, 'SELECT status FROM drivers WHERE id = ?', [$d1]) === 'online', 'the driver is online again after the trip');
 $after = $P1->api('booking_status.php?id=' . $b1)['booking']['driver'];
 check(array_key_exists('lat', $after) && $after['lat'] === null && $after['lng'] === null, 'the driver\'s position is no longer shared once the trip is over');
-check((int)val($pdo, 'SELECT COUNT(*) FROM booking_status_history WHERE booking_id = ?', [$b1]) >= 6, 'every status change is in the booking history');
+check((int)val($pdo, 'SELECT COUNT(*) FROM booking_status_history WHERE booking_id = ?', [$b1]) >= 7, 'every status change is in the booking history');
 
-echo PHP_EOL . "== Cancel and reject ==" . PHP_EOL;
+echo PHP_EOL . "== Cancel and expiry ==" . PHP_EOL;
 $c2 = $P1->api('booking_create.php', 'POST', ['pickup' => $pickup, 'dest' => $dest]);
 check(($c2['ok'] ?? false) === true, 'the passenger can book again after finishing');
-check($P1->api('booking_cancel.php', 'POST', ['id' => $c2['id']])['ok'] === true && val($pdo, 'SELECT status FROM bookings WHERE id = ?', [$c2['id']]) === 'cancelled', 'a pending booking can be cancelled by its passenger');
-$c3 = $P2->api('booking_create.php', 'POST', ['pickup' => $pickup, 'dest' => $dest]);
-check($OP->api('operator_action.php', 'POST', ['action' => 'reject', 'booking_id' => $c3['id'], 'reason' => 'No unit free'])['ok'] === true, 'the operator can reject a request with a reason');
-$rs = $P2->api('booking_status.php?id=' . $c3['id']);
-check($rs['booking']['status'] === 'rejected' && $rs['booking']['cancel_reason'] === 'No unit free', 'the passenger sees the rejection and reason');
+check(count($D1->api('driver_state.php')['available']) === 1, 'the new booking reaches online drivers immediately');
+check($P1->api('booking_cancel.php', 'POST', ['id' => $c2['id']])['ok'] === true && val($pdo, 'SELECT status FROM bookings WHERE id = ?', [$c2['id']]) === 'cancelled', 'an available booking can be cancelled by its passenger');
+$gone = $D1->api('driver_claim.php', 'POST', ['id' => $c2['id']]);
+check($gone['http'] === 409 && ($gone['code'] ?? '') === 'cancelled' && $D1->api('driver_state.php')['available'] === [], 'a cancelled booking disappears from drivers and cannot be accepted ("the passenger cancelled")');
+$pdo->prepare("INSERT INTO bookings (passenger_id, pickup_label, pickup_latitude, pickup_longitude, dest_label, dest_latitude, dest_longitude, distance_km, requested_at)
+               VALUES ((SELECT id FROM users WHERE username = 'passenger2'), 'Old', 14.33, 120.94, 'Older', 14.34, 120.97, 3.5, DATE_SUB(NOW(), INTERVAL 30 MINUTE))")->execute();
+$stale = (int)$pdo->lastInsertId();
+check($D1->api('driver_state.php')['available'] === [], 'a booking nobody accepted for 15+ minutes is not offered any more');
+$rs = $P2->api('booking_status.php?id=' . $stale);
+check($rs['booking']['status'] === 'rejected' && $rs['booking']['cancel_reason'] === 'No driver accepted in time', 'the passenger is told that no driver accepted in time');
+check(($P2->api('booking_create.php', 'POST', ['pickup' => $pickup, 'dest' => $dest])['ok'] ?? false) === true, 'and can book again');
+$P2->api('booking_cancel.php', 'POST', ['id' => (int)val($pdo, "SELECT id FROM bookings WHERE passenger_id = (SELECT id FROM users WHERE username = 'passenger2') AND status = 'available'")]);
 
 echo PHP_EOL . "== Module A <-> Module B conflict through the API ==" . PHP_EOL;
 $pdo->exec("DELETE FROM driver_schedules WHERE driver_id = $d2");
-$D2->api('driver_availability.php', 'POST', ['status' => 'online']);
 $R1 = (int)val($pdo, 'SELECT id FROM routes WHERE code = "R1"');
 $today = (string)val($pdo, 'SELECT CURDATE()');
 $pdo->prepare("INSERT INTO route_assignments (route_id, driver_id, unit_id, start_datetime, end_datetime) VALUES (?,?,?,?,?)")
     ->execute([$R1, $d2, (int)val($pdo, 'SELECT default_unit_id FROM drivers WHERE id = ?', [$d2]), "$today 00:01:00", "$today 23:58:00"]);
 $assignmentId = (int)$pdo->lastInsertId();
 $c4 = $P2->api('booking_create.php', 'POST', ['pickup' => $pickup, 'dest' => $dest]);
-$q = $OP->api('operator_queue.php');
-check(!in_array($d2, array_column($q['drivers'], 'id'), true), 'a driver with an official route assignment is not offered for passenger trips');
-$a = $OP->api('operator_action.php', 'POST', ['action' => 'assign', 'booking_id' => $c4['id'], 'driver_id' => $d2]);
-check(($a['ok'] ?? true) === false && str_contains($a['error'] ?? '', 'route assignment'), 'assigning that driver anyway is blocked by the database', json_encode($a));
+$st4 = $D2->api('driver_state.php');
+check($st4['available'] === [] && str_contains($st4['blocked_reason'] ?? '', 'official route'), 'a driver on an official route is not shown passenger bookings', json_encode($st4['blocked_reason'] ?? null));
+$a = $D2->api('driver_claim.php', 'POST', ['id' => $c4['id']]);
+check(($a['ok'] ?? true) === false && str_contains($a['error'] ?? '', 'official route'), 'and cannot accept one', json_encode($a));
 $pdo->exec("UPDATE route_assignments SET status = 'cancelled' WHERE id = $assignmentId");
-$a = $OP->api('operator_action.php', 'POST', ['action' => 'assign', 'booking_id' => $c4['id'], 'driver_id' => $d2]);
-check(($a['ok'] ?? false) === true, 'once the assignment is cancelled the driver can take the trip', json_encode($a));
-$OP->api('operator_action.php', 'POST', ['action' => 'unassign', 'booking_id' => $c4['id']]);
-check(val($pdo, 'SELECT status FROM bookings WHERE id = ?', [$c4['id']]) === 'pending', 'the operator can take a booking back from a driver');
+check(count($D2->api('driver_state.php')['available']) === 1, 'once the assignment is cancelled the driver sees the booking');
+$a = $D2->api('driver_claim.php', 'POST', ['id' => $c4['id']]);
+check(($a['ok'] ?? false) === true, 'and can accept it', json_encode($a));
+check($D2->api('driver_action.php', 'POST', ['id' => $c4['id'], 'action' => 'decline'])['ok'] === true && val($pdo, 'SELECT status FROM bookings WHERE id = ?', [$c4['id']]) === 'available', 'a driver can hand a booking back');
 $P2->api('booking_cancel.php', 'POST', ['id' => $c4['id']]);
 
 if ($fallback !== null) {

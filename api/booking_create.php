@@ -3,6 +3,7 @@
 // The server works out distance, route and fare itself; nothing numeric from the browser is trusted.
 require __DIR__ . '/../config/auth.php';
 require __DIR__ . '/../config/api.php';
+require __DIR__ . '/../lib/Bookings.php';
 $user = requireApiRole(['passenger']);
 apiMustBePost();
 
@@ -38,11 +39,12 @@ if (activeFareMatrix() === null) {
 }
 
 $pdo = db();
+Bookings::expireStale($pdo);
 try {
     $pdo->beginTransaction();
     // Lock this passenger so two quick taps cannot create two open bookings.
     $pdo->prepare('SELECT id FROM users WHERE id = ? FOR UPDATE')->execute([$user['id']]);
-    $open = $pdo->prepare("SELECT COUNT(*) FROM bookings WHERE passenger_id = ? AND status IN ('pending','assigned','en_route','in_progress')");
+    $open = $pdo->prepare("SELECT COUNT(*) FROM bookings WHERE passenger_id = ? AND status IN ('available','assigned','en_route','in_progress')");
     $open->execute([$user['id']]);
     if ((int)$open->fetchColumn() > 0) {
         $pdo->rollBack();

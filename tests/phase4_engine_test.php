@@ -37,7 +37,7 @@ function failsWith(callable $fn, string $needle): bool
     try { $fn(); return false; } catch (PDOException $e) { return str_contains($e->getMessage(), $needle); }
 }
 
-if ((int)val("SELECT COUNT(*) FROM bookings WHERE status IN ('pending','assigned','en_route','in_progress')") > 0) {
+if ((int)val("SELECT COUNT(*) FROM bookings WHERE status IN ('available','assigned','en_route','in_progress')") > 0) {
     fwrite(STDERR, "There are open bookings. Finish or delete them before running this test." . PHP_EOL);
     exit(2);
 }
@@ -77,7 +77,7 @@ $d = array_column(rows('SELECT d.id FROM drivers d JOIN users u ON u.id = d.user
 [$d1, $d2, $d3, $d4] = array_map('intval', $d);
 $R1 = (int)val('SELECT id FROM routes WHERE code = "R1"');
 $R2 = (int)val('SELECT id FROM routes WHERE code = "R2"');
-$op = (int)val('SELECT id FROM users WHERE username = "operator1"');
+$userOf = static fn(int $driver) => (int)val('SELECT user_id FROM drivers WHERE id = ?', [$driver]);   // a driver accepts bookings for themselves
 $p1 = (int)val('SELECT id FROM users WHERE username = "passenger1"');
 $p2 = (int)val('SELECT id FROM users WHERE username = "passenger2"');
 $unitOf = static fn(int $driver) => (int)val('SELECT default_unit_id FROM drivers WHERE id = ?', [$driver]);
@@ -178,7 +178,7 @@ check($slotDrivers($R1) === [$d1], 'driver 1 is scheduled for Monday 06:00');
 run("UPDATE drivers SET status = 'online' WHERE id IN (?, ?)", [$d1, $d2]);
 run("INSERT INTO bookings (passenger_id, pickup_label, pickup_latitude, pickup_longitude, dest_label, dest_latitude, dest_longitude, distance_km) VALUES (?, 'A', 14.33, 120.94, 'B', 14.34, 120.97, 3.5)", [$p1]);
 $bk = (int)$pdo->lastInsertId();
-run("UPDATE bookings SET status = 'assigned', driver_id = ?, unit_id = ?, assigned_by = ? WHERE id = ?", [$d1, $unitOf($d1), $op, $bk]);
+run("UPDATE bookings SET status = 'assigned', driver_id = ?, unit_id = ?, assigned_by = ? WHERE id = ?", [$d1, $unitOf($d1), $userOf($d1), $bk]);
 run("UPDATE bookings SET status = 'in_progress' WHERE id = ?", [$bk]);
 $r = tick("$mon 06:05:00");
 $rowsAt = rows("SELECT driver_id, status, notes FROM route_assignments ORDER BY id");
@@ -204,7 +204,7 @@ if ($start->format('Y-m-d') !== $end->format('Y-m-d')) {
     run("UPDATE drivers SET status = 'online' WHERE id IN (?, ?, ?)", [$d1, $d2, $d3]);
     run("INSERT INTO bookings (passenger_id, pickup_label, pickup_latitude, pickup_longitude, dest_label, dest_latitude, dest_longitude, distance_km) VALUES (?, 'A', 14.33, 120.94, 'B', 14.34, 120.97, 3.5)", [$p1]);
     $trip = (int)$pdo->lastInsertId();
-    run("UPDATE bookings SET status = 'assigned', driver_id = ?, unit_id = ?, assigned_by = ? WHERE id = ?", [$d1, $unitOf($d1), $op, $trip]);
+    run("UPDATE bookings SET status = 'assigned', driver_id = ?, unit_id = ?, assigned_by = ? WHERE id = ?", [$d1, $unitOf($d1), $userOf($d1), $trip]);
 
     $r = tick((string)val('SELECT NOW()'), $R2);
     $mine = rows('SELECT driver_id FROM route_assignments WHERE route_id = ?', [$R2]);
@@ -216,7 +216,7 @@ if ($start->format('Y-m-d') !== $end->format('Y-m-d')) {
 
     run("INSERT INTO bookings (passenger_id, pickup_label, pickup_latitude, pickup_longitude, dest_label, dest_latitude, dest_longitude, distance_km) VALUES (?, 'A', 14.33, 120.94, 'B', 14.34, 120.97, 3.5)", [$p2]);
     $trip2 = (int)$pdo->lastInsertId();
-    check(failsWith(fn() => run("UPDATE bookings SET status = 'assigned', driver_id = ?, unit_id = ?, assigned_by = ? WHERE id = ?", [$d2, $unitOf($d2), $op, $trip2]), 'route assignment'),
+    check(failsWith(fn() => run("UPDATE bookings SET status = 'assigned', driver_id = ?, unit_id = ?, assigned_by = ? WHERE id = ?", [$d2, $unitOf($d2), $userOf($d2), $trip2]), 'route assignment'),
         'a passenger trip cannot be given to a driver whose route is about to start');
     $httpReady = true;
 }

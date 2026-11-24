@@ -1,9 +1,11 @@
 <?php
 require __DIR__ . '/config/auth.php';
 require __DIR__ . '/config/layout.php';
+require __DIR__ . '/lib/Bookings.php';
 $user = requireRole(['passenger']);
 
-$open = db()->prepare("SELECT id FROM bookings WHERE passenger_id = ? AND status IN ('pending','assigned','en_route','in_progress') ORDER BY id DESC LIMIT 1");
+Bookings::expireStale(db());
+$open = db()->prepare("SELECT id FROM bookings WHERE passenger_id = ? AND status IN ('available','assigned','en_route','in_progress') ORDER BY id DESC LIMIT 1");
 $open->execute([$user['id']]);
 if ($openId = $open->fetchColumn()) {
     flash('info', 'You already have an open booking. Finish or cancel it before booking again.');

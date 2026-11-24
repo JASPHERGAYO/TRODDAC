@@ -1,10 +1,12 @@
 <?php
 require __DIR__ . '/config/auth.php';
 require __DIR__ . '/config/layout.php';
+require __DIR__ . '/lib/Bookings.php';
 $user = requireRole(['passenger']);
+Bookings::expireStale(db());
 
 $st = db()->prepare("SELECT COUNT(*) total,
-                            SUM(status IN ('pending','assigned','en_route','in_progress')) open_trips,
+                            SUM(status IN ('available','assigned','en_route','in_progress')) open_trips,
                             SUM(status = 'completed') completed
                        FROM bookings WHERE passenger_id = ?");
 $st->execute([$user['id']]);

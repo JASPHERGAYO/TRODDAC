@@ -21,7 +21,7 @@ users, terminals, tricycle_units, drivers, driver_schedules, routes, route_sched
 driver_route_eligibility (rotation queue), rotation_pointers, fare_matrices, bookings, booking_status_history,
 driver_locations, route_assignments, route_assignment_history.
 Views: v_driver_board, v_assignment_overview, v_active_trips.
-Migration 008 adds login support; 009 adds booking details (passenger count, notes, route geometry).
+Migration 008 adds login support; 009 booking details; 010 the assignment engine; 011 names/units; 012 passenger reports; 013 driver claims (`available` status, `booking_declines`).
 
 ## Rules enforced by the database
 - Only one active fare matrix; fares are calculated by `fn_calculate_fare()` (never trusted from the browser).
@@ -29,7 +29,7 @@ Migration 008 adds login support; 009 adds booking details (passenger count, not
 - A driver on a live trip cannot be given an overlapping official route, and a driver with an overlapping route cannot be given a trip (same for units).
 - Route assignments need: active route, eligible driver, inside the driver's schedule windows (if any), no overlaps, same-day.
 - Driver status `on_trip` is set only by a live booking and cannot be changed mid-trip.
-- Booking status follows a fixed lifecycle; finished bookings/assignments are locked.
+- Booking status follows a fixed lifecycle (available -> assigned -> en_route -> in_progress -> completed, or cancelled); only the driver themselves can move a booking from available to assigned; finished bookings/assignments are locked.
 - Set `SET @app_user_id = <user id>;` on each connection so history rows record who acted.
 
 Errors come back as SQLSTATE 45000 with a `TRD-Exxx:` prefix (listed at the top of migrations 005 and 006).
