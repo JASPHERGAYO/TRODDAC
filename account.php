@@ -55,6 +55,14 @@ dashHeader('My account', 'account.php');
         <div class="row two">
             <div class="panel glass">
                 <h3>Profile</h3>
+                <div class="account-avatar-row">
+                    <?= userAvatarHtml($user, 'lg') ?>
+                    <div class="account-avatar-meta">
+                        <b><?= e($user['full_name']) ?></b>
+                        <p class="hint">Shown across your dashboard.</p>
+                        <button type="button" class="small-btn ghost" data-avatar-open><?= icon('camera') ?><span>Change photo</span></button>
+                    </div>
+                </div>
                 <form method="post" action="account.php">
                     <?= csrfField() ?><input type="hidden" name="action" value="profile">
                     <div class="name-row">

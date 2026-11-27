@@ -135,9 +135,10 @@ final class AssignmentEngine
                        COALESCE(s.min_rest_minutes, 30)              AS rest_min,
                        COALESCE(s.assignment_lead_minutes, 60)       AS lead_min
                   FROM routes r LEFT JOIN rotation_settings s ON s.route_id = r.id
-                 WHERE r.is_active = 1' . ($onlyRouteId ? ' AND r.id = ' . (int)$onlyRouteId : '') . ' ORDER BY r.id';
+                 WHERE r.is_active = 1' . ($onlyRouteId ? ' AND r.id = ?' : '') . ' ORDER BY r.id';
+        $routeParams = $onlyRouteId ? [$onlyRouteId] : [];
 
-        foreach ($this->rows($sql) as $route) {
+        foreach ($this->rows($sql, $routeParams) as $route) {
             if ((int)$route['auto_on'] !== 1) {
                 continue;
             }
@@ -241,8 +242,8 @@ final class AssignmentEngine
         }
         $rest = (int)$route['rest_min'];
         $tooClose = (int)$this->value("SELECT COUNT(*) FROM route_assignments WHERE driver_id = ? AND status IN ('scheduled','active','completed')
-                                        AND start_datetime < DATE_ADD(?, INTERVAL $rest MINUTE) AND end_datetime > DATE_SUB(?, INTERVAL $rest MINUTE)",
-                                      [$driverId, $e, $s]);
+                                        AND start_datetime < DATE_ADD(?, INTERVAL ? MINUTE) AND end_datetime > DATE_SUB(?, INTERVAL ? MINUTE)",
+                                      [$driverId, $e, $rest, $s, $rest]);
         if ($tooClose > 0) {
             return 'The driver needs a ' . $rest . '-minute rest between assignments';
         }

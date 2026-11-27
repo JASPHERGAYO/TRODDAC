@@ -100,4 +100,157 @@
     };
 
     window.TRD = TRD;
+
+    // Profile picture uploader shared across every dashboard.
+    (function initAvatarUploader() {
+        const modal = document.getElementById('avatar-modal');
+        if (!modal) return;
+        const form      = document.getElementById('avatar-form');
+        const fileInput = document.getElementById('avatar-file');
+        const fileLabel = document.getElementById('avatar-file-label');
+        const preview   = document.getElementById('avatar-preview');
+        const errBox    = document.getElementById('avatar-error');
+        const saveBtn   = document.getElementById('avatar-save-btn');
+        const removeBtn = document.getElementById('avatar-remove-btn');
+
+        const user = boot.user || {};
+        let currentUrl = user.avatarUrl || null;
+        const initial  = user.initial || '?';
+        let previewObjUrl = null;
+        let busy = false;
+
+        function setError(msg) {
+            errBox.textContent = msg || '';
+            errBox.hidden = !msg;
+        }
+
+        function renderAvatarEl(el, url) {
+            el.classList.toggle('has-photo', Boolean(url));
+            el.innerHTML = '';
+            if (url) {
+                const img = document.createElement('img');
+                img.src = url;
+                img.alt = '';
+                img.className = 'avatar-img';
+                el.appendChild(img);
+            } else {
+                el.textContent = initial;
+            }
+        }
+
+        function syncAllAvatars(url) {
+            currentUrl = url;
+            document.querySelectorAll('[data-user-avatar]').forEach((el) => renderAvatarEl(el, url));
+            renderAvatarEl(preview, url);
+            removeBtn.hidden = !url;
+        }
+
+        function resetPicker() {
+            if (previewObjUrl) { URL.revokeObjectURL(previewObjUrl); previewObjUrl = null; }
+            fileInput.value = '';
+            fileLabel.textContent = 'Choose a photo from your device';
+            saveBtn.disabled = true;
+            setError('');
+            renderAvatarEl(preview, currentUrl);
+        }
+
+        function openModal() {
+            resetPicker();
+            modal.hidden = false;
+            document.body.classList.add('modal-open');
+        }
+
+        function closeModal() {
+            if (busy) return;
+            modal.hidden = true;
+            resetPicker();
+            if (!document.querySelector('dialog[open]')) document.body.classList.remove('modal-open');
+        }
+
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('[data-avatar-open]')) { openModal(); return; }
+            if (e.target.closest('[data-avatar-close]') || e.target === modal) { closeModal(); }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !modal.hidden) closeModal();
+        });
+
+        fileInput.addEventListener('change', () => {
+            setError('');
+            if (previewObjUrl) { URL.revokeObjectURL(previewObjUrl); previewObjUrl = null; }
+            const f = fileInput.files && fileInput.files[0];
+            if (!f) {
+                fileLabel.textContent = 'Choose a photo from your device';
+                saveBtn.disabled = true;
+                renderAvatarEl(preview, currentUrl);
+                return;
+            }
+            if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) {
+                setError('Only JPG, PNG, and WebP images are allowed.');
+                fileInput.value = '';
+                saveBtn.disabled = true;
+                return;
+            }
+            if (f.size > 2 * 1024 * 1024) {
+                setError('Image must be 2 MB or smaller.');
+                fileInput.value = '';
+                saveBtn.disabled = true;
+                return;
+            }
+            previewObjUrl = URL.createObjectURL(f);
+            renderAvatarEl(preview, previewObjUrl);
+            fileLabel.textContent = f.name;
+            saveBtn.disabled = false;
+        });
+
+        async function sendFormData(fd, btn, busyLabel, idleLabel) {
+            busy = true;
+            setError('');
+            btn.disabled = true;
+            btn.textContent = busyLabel;
+            try {
+                const res = await fetch('api/profile_picture.php', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-CSRF-Token': boot.csrf || '' },
+                    body: fd,
+                });
+                if (res.status === 401) { window.location.href = 'login.php'; return; }
+                const data = await res.json().catch(() => ({ ok: false, error: 'Unexpected server response.' }));
+                if (!res.ok || !data.ok) {
+                    setError(data.error || 'Could not update profile picture.');
+                    return;
+                }
+                const bust = data.url ? data.url + '?v=' + Date.now() : null;
+                syncAllAvatars(bust);
+                busy = false;
+                closeModal();
+                TRD.toast(data.message || 'Profile picture updated.', 'success');
+            } catch (err) {
+                setError('No connection. Check your internet and try again.');
+            } finally {
+                busy = false;
+                btn.textContent = idleLabel;
+                if (!modal.hidden) btn.disabled = (btn === saveBtn && !(fileInput.files && fileInput.files[0]));
+            }
+        }
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const f = fileInput.files && fileInput.files[0];
+            if (!f || busy) return;
+            const fd = new FormData();
+            fd.append('action', 'upload');
+            fd.append('avatar', f);
+            sendFormData(fd, saveBtn, 'Uploading...', 'Upload photo');
+        });
+
+        removeBtn.addEventListener('click', () => {
+            if (busy || !currentUrl) return;
+            const fd = new FormData();
+            fd.append('action', 'remove');
+            sendFormData(fd, removeBtn, 'Removing...', 'Remove photo');
+        });
+    })();
 })();

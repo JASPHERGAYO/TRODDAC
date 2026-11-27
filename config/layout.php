@@ -17,6 +17,7 @@ function icon(string $name): string
         'coin'     => '<circle cx="12" cy="12" r="9"/><path d="M14.5 9.2A2.6 2.6 0 0 0 12 7.8c-1.4 0-2.5.8-2.5 2s1.1 1.8 2.5 2.1 2.5.8 2.5 2-1.1 2-2.5 2a2.6 2.6 0 0 1-2.5-1.4M12 6v1.8M12 16.2V18"/>',
         'flag'     => '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
         'shield'   => '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+        'camera'   => '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
     ];
     return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . ($paths[$name] ?? '') . '</svg>';
 }
@@ -70,15 +71,28 @@ function routeStops(string $from, string $to): string
     return '<span class="stops"><span class="stop from">' . e($from) . '</span><span class="stop to">' . e($to) . '</span></span>';
 }
 
+/** Renders the circular user avatar (photo when uploaded, initial otherwise). */
+function userAvatarHtml(?array $user, string $sizeClass = 'sm'): string
+{
+    $url     = userAvatarUrl($user);
+    $initial = e(strtoupper(firstChar((string)($user['full_name'] ?? '?'))));
+    $cls     = trim('avatar ' . $sizeClass . ($url ? ' has-photo' : ''));
+    $inner   = $url ? '<img src="' . e($url) . '" alt="" class="avatar-img">' : $initial;
+    return '<span class="' . $cls . '" data-user-avatar>' . $inner . '</span>';
+}
+
 /** $opts: 'maps' => true loads Leaflet's stylesheet for pages with a map. */
 function dashHeader(string $title, string $activeHref, array $opts = []): void
 {
     $user        = currentUser();
     $role        = $user['role'];
     $name        = e($user['full_name']);
-    $initial     = e(strtoupper(firstChar($user['full_name'])));
     $roleName    = e(ROLE_LABEL[$role] ?? $role);
     $portalTitle = e((ROLE_LABEL[$role] ?? ucfirst($role)) . ' Portal');
+    $avatarBtn   = '<button type="button" class="avatar-btn" data-avatar-open title="Change profile picture" aria-label="Change profile picture">'
+                 . userAvatarHtml($user, 'sm')
+                 . '<span class="avatar-edit-badge" aria-hidden="true">' . icon('camera') . '</span>'
+                 . '</button>';
     ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -111,7 +125,7 @@ function dashHeader(string $title, string $activeHref, array $opts = []): void
             <?php endforeach; ?>
         </div>
         <div class="side-user">
-            <div class="avatar sm" aria-hidden="true"><?= $initial ?></div>
+            <?= $avatarBtn ?>
             <div class="side-user-text"><b><?= $name ?></b><small><?= $roleName ?></small></div>
             <form method="post" action="logout.php" class="logout-form side-logout">
                 <?= csrfField() ?>
@@ -136,7 +150,7 @@ function dashHeader(string $title, string $activeHref, array $opts = []): void
             <div class="who">
                 <span class="top-date"><?= e(date('D, M j')) ?></span>
                 <span class="role-tag"><?= $roleName ?></span>
-                <span class="avatar sm" title="<?= $name ?>" aria-hidden="true"><?= $initial ?></span>
+                <?= $avatarBtn ?>
                 <form method="post" action="logout.php" class="logout-form mobile-logout"><?= csrfField() ?><button type="submit" aria-label="Log out" title="Log out"><?= icon('logout') ?></button></form>
             </div>
         </header>
@@ -165,10 +179,17 @@ function dashHeader(string $title, string $activeHref, array $opts = []): void
  */
 function dashFooter(array $scripts = [], array $boot = [], bool $maps = false): void
 {
-    $cfg  = appConfig();
+    $cfg       = appConfig();
+    $user      = currentUser();
+    $avatarUrl = userAvatarUrl($user);
+    $initial   = strtoupper(firstChar((string)($user['full_name'] ?? '?')));
     $boot += [
         'csrf'    => csrfToken(),
         'poll'    => (int)$cfg['poll_seconds'],
+        'user'    => [
+            'initial'   => $initial,
+            'avatarUrl' => $avatarUrl,
+        ],
         'map'     => [
             'tileUrl'     => $cfg['map']['tile_url'],
             'attribution' => $cfg['map']['attribution'],
@@ -178,6 +199,33 @@ function dashFooter(array $scripts = [], array $boot = [], bool $maps = false): 
         ],
     ];
     echo "        </main>\n    </div>\n</div>\n";
+    ?>
+<div id="avatar-modal" class="avatar-modal" role="dialog" aria-modal="true" aria-labelledby="avatar-modal-title" hidden>
+    <div class="avatar-modal-card">
+        <div class="modal-head">
+            <h3 id="avatar-modal-title">Profile picture</h3>
+            <button type="button" class="x" data-avatar-close aria-label="Close">&times;</button>
+        </div>
+        <div class="avatar-preview-wrap">
+            <span class="avatar xl<?= $avatarUrl ? ' has-photo' : '' ?>" id="avatar-preview"><?= $avatarUrl ? '<img src="' . e($avatarUrl) . '" alt="" class="avatar-img">' : e($initial) ?></span>
+            <p class="hint">JPG, PNG or WebP &middot; max 2 MB</p>
+        </div>
+        <div id="avatar-error" class="alert" role="alert" hidden></div>
+        <form id="avatar-form" novalidate>
+            <label for="avatar-file" class="avatar-dropzone">
+                <?= icon('camera') ?>
+                <span id="avatar-file-label">Choose a photo from your device</span>
+                <input type="file" id="avatar-file" name="avatar" accept="image/jpeg,image/png,image/webp" hidden>
+            </label>
+            <div class="avatar-modal-actions">
+                <button type="submit" class="btn" id="avatar-save-btn" disabled>Upload photo</button>
+                <button type="button" class="btn ghost" id="avatar-remove-btn"<?= $avatarUrl ? '' : ' hidden' ?>>Remove photo</button>
+                <button type="button" class="btn ghost" data-avatar-close>Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php
     echo '<script type="application/json" id="boot">' . json_encode($boot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . "</script>\n";
     echo '<script src="assets/js/boot.js"></script>' . "\n";
     if ($maps) {

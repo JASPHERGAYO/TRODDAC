@@ -66,8 +66,8 @@ function insideServiceArea(float $lat, float $lng): bool
 /** Cleans a place label typed or looked up by the browser. */
 function cleanLabel(mixed $label, float $lat, float $lng): string
 {
-    $text = trim(strip_tags((string)$label));
-    $text = preg_replace('/\s+/u', ' ', $text) ?? '';
+    $text = preg_replace('/[\x00-\x1F\x7F]/u', ' ', strip_tags((string)$label)) ?? '';
+    $text = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
     if ($text === '') {
         return sprintf('Pinned location (%.5f, %.5f)', $lat, $lng);
     }
@@ -255,6 +255,7 @@ function routePath(array $route): array
 /** Official route assignments of a driver (current and upcoming) with terminals and the route line. */
 function driverOfficialRoutes(int $driverId, int $limit = 5): array
 {
+    $maxRows = max(1, min(50, $limit));
     $st = db()->prepare("SELECT ra.id, ra.status, ra.start_datetime, ra.end_datetime, ra.rotation_cycle, ra.queue_position,
                                 r.id AS route_id, r.code, r.name, r.distance_km, r.path_json,
                                 ot.name AS o_name, ot.latitude AS o_lat, ot.longitude AS o_lng,
@@ -266,8 +267,8 @@ function driverOfficialRoutes(int $driverId, int $limit = 5): array
                            JOIN terminals dt ON dt.id = r.destination_terminal_id
                            LEFT JOIN tricycle_units tu ON tu.id = ra.unit_id
                           WHERE ra.driver_id = ? AND ra.status IN ('scheduled','active') AND ra.end_datetime > NOW()
-                          ORDER BY ra.start_datetime LIMIT " . (int)$limit);
-    $st->execute([$driverId]);
+                          ORDER BY ra.start_datetime LIMIT ?");
+    $st->execute([$driverId, $maxRows]);
     $out = [];
     foreach ($st->fetchAll() as $i => $a) {
         $out[] = [

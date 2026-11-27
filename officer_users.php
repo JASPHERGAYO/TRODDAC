@@ -81,8 +81,9 @@ $q    = Accounts::clean($_GET['q'] ?? '');
 $role = (string)($_GET['role'] ?? '');
 $where = []; $params = [];
 if ($q !== '') {
-    $where[] = '(u.username LIKE ? OR u.full_name LIKE ? OR u.email LIKE ? OR d.license_number LIKE ? OR tu.body_number LIKE ?)';
-    array_push($params, ...array_fill(0, 5, '%' . $q . '%'));
+    $where[] = "(u.username LIKE ? ESCAPE '\\\\' OR u.full_name LIKE ? ESCAPE '\\\\' OR u.email LIKE ? ESCAPE '\\\\' OR d.license_number LIKE ? ESCAPE '\\\\' OR tu.body_number LIKE ? ESCAPE '\\\\')";
+    $like    = '%' . escapeLike($q) . '%';
+    array_push($params, $like, $like, $like, $like, $like);
 }
 if (isset(ROLE_LABEL[$role])) {
     $where[] = 'u.role = ?';

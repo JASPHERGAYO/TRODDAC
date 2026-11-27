@@ -16,7 +16,8 @@ final class Accounts
 
     public static function clean(mixed $value): string
     {
-        return trim(preg_replace('/\s+/u', ' ', (string)$value) ?? '');
+        $clean = preg_replace('/[\x00-\x1F\x7F]/u', ' ', (string)$value) ?? '';
+        return trim(preg_replace('/\s+/u', ' ', $clean) ?? '');
     }
 
     /** 0917 123 4567, +63 917 123 4567 and 63917... are the same number (stored as 09171234567). */

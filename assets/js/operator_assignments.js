@@ -1,4 +1,4 @@
-// Read-only monitoring of automatic route assignments (Module B).
+// Monitoring of automatic route assignments (Module B) + officer route management modal.
 (function () {
     const TRD = window.TRD;
     const $ = (id) => document.getElementById(id);
@@ -50,5 +50,130 @@
             load();
         });
     }
+
+    // Officer route modal (Add / Edit route + driver selection)
+    const modal = $('m-route');
+    if (modal && TRD.modal) {
+        const titleEl  = $('m-route-title');
+        const submitEl = $('r-submit');
+        const idEl     = $('r-id');
+        const codeEl   = $('r-code');
+        const nameEl   = $('r-name');
+        const origEl   = $('r-origin');
+        const destEl   = $('r-dest');
+        const kmEl     = $('r-km');
+        const durEl    = $('r-dur');
+        const reqEl    = $('r-req');
+        const s1El     = $('r-s1');
+        const e1El     = $('r-e1');
+        const s2El     = $('r-s2');
+        const e2El     = $('r-e2');
+        const toggleDrvBtn = $('r-toggle-drivers');
+        let lastAutoName = '';
+
+        function clearErrors() {
+            modal.querySelectorAll('.field-error, .alert').forEach((el) => el.remove());
+        }
+
+        function updateToggleLabel() {
+            if (!toggleDrvBtn) return;
+            const boxes = [...modal.querySelectorAll('#r-drivers input[type="checkbox"]')];
+            const allChecked = boxes.length > 0 && boxes.every((b) => b.checked);
+            toggleDrvBtn.textContent = allChecked ? 'Clear all' : 'Select all';
+        }
+
+        function openCreate() {
+            clearErrors();
+            titleEl.textContent  = 'Add official route';
+            submitEl.textContent = 'Create route';
+            idEl.value   = '0';
+            codeEl.value = '';
+            nameEl.value = '';
+            origEl.value = '';
+            destEl.value = '';
+            kmEl.value   = '4.50';
+            durEl.value  = '15';
+            reqEl.value  = '1';
+            s1El.value   = '06:00';
+            e1El.value   = '10:00';
+            s2El.value   = '';
+            e2El.value   = '';
+            lastAutoName = '';
+            modal.querySelectorAll('#r-days input[type="checkbox"]').forEach((cb) => {
+                cb.checked = Number(cb.value) <= 6;
+            });
+            modal.querySelectorAll('#r-drivers input[type="checkbox"]').forEach((cb) => {
+                cb.checked = true;
+            });
+            updateToggleLabel();
+            TRD.modal.open(modal);
+        }
+
+        function openEdit(r) {
+            clearErrors();
+            titleEl.textContent  = 'Edit official route';
+            submitEl.textContent = 'Save changes';
+            idEl.value   = String(r.id || 0);
+            codeEl.value = r.code || '';
+            nameEl.value = r.name || '';
+            origEl.value = String(r.origin_terminal_id || '');
+            destEl.value = String(r.destination_terminal_id || '');
+            kmEl.value   = r.distance_km || '4.50';
+            durEl.value  = String(r.est_duration_min || 15);
+            reqEl.value  = String(r.drivers_required || 1);
+            s1El.value   = r.start_time || '06:00';
+            e1El.value   = r.end_time || '10:00';
+            s2El.value   = r.start_time_2 || '';
+            e2El.value   = r.end_time_2 || '';
+            lastAutoName = '';
+            const daySet = new Set((r.days || []).map(Number));
+            modal.querySelectorAll('#r-days input[type="checkbox"]').forEach((cb) => {
+                cb.checked = daySet.has(Number(cb.value));
+            });
+            const drvSet = new Set((r.driver_ids || []).map(Number));
+            modal.querySelectorAll('#r-drivers input[type="checkbox"]').forEach((cb) => {
+                cb.checked = drvSet.has(Number(cb.value));
+            });
+            updateToggleLabel();
+            TRD.modal.open(modal);
+        }
+
+        function maybeSuggestName() {
+            if (idEl.value !== '0') return;
+            const oTxt = origEl.options[origEl.selectedIndex]?.text || '';
+            const dTxt = destEl.options[destEl.selectedIndex]?.text || '';
+            if (!origEl.value || !destEl.value || origEl.value === destEl.value) return;
+            const clean = (s) => s.replace(/\s+Terminal$/i, '').trim();
+            const suggested = clean(oTxt) + ' - ' + clean(dTxt);
+            if (nameEl.value.trim() === '' || nameEl.value === lastAutoName) {
+                nameEl.value = suggested;
+                lastAutoName = suggested;
+            }
+        }
+
+        $('new-route')?.addEventListener('click', openCreate);
+        $('new-route-inline')?.addEventListener('click', openCreate);
+        origEl?.addEventListener('change', maybeSuggestName);
+        destEl?.addEventListener('change', maybeSuggestName);
+
+        document.addEventListener('click', (e) => {
+            const editBtn = e.target.closest('[data-route-edit]');
+            if (!editBtn) return;
+            try { openEdit(JSON.parse(editBtn.dataset.routeEdit)); } catch (err) { console.error(err); }
+        });
+
+        toggleDrvBtn?.addEventListener('click', () => {
+            const boxes = [...modal.querySelectorAll('#r-drivers input[type="checkbox"]')];
+            const turnOn = !boxes.every((b) => b.checked);
+            boxes.forEach((b) => { b.checked = turnOn; });
+            updateToggleLabel();
+        });
+
+        modal.addEventListener('change', (e) => {
+            if (e.target.closest('#r-drivers')) updateToggleLabel();
+        });
+        updateToggleLabel();
+    }
+
     TRD.poll(load, 10);
 })();

@@ -85,6 +85,11 @@ function startSecureSession(): void
     if (session_status() === PHP_SESSION_ACTIVE) {
         return;
     }
+    if (!headers_sent()) {
+        header('X-Content-Type-Options: nosniff');
+        header('X-Frame-Options: SAMEORIGIN');
+        header('Referrer-Policy: strict-origin-when-cross-origin');
+    }
     session_name('TRODDAC_SESSION');
     ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1');
@@ -173,10 +178,17 @@ function currentUser(): ?array
     }
     $user = null;
     if (!empty($_SESSION['user_id'])) {
-        $st = db()->prepare('SELECT id, username, email, full_name, phone, role, is_active, last_login_at FROM users WHERE id = ?');
+        $cols = 'id, username, email, full_name, phone, role, is_active, last_login_at';
+        if (schemaHas('users', 'profile_picture')) {
+            $cols .= ', profile_picture';
+        }
+        $st = db()->prepare("SELECT $cols FROM users WHERE id = ?");
         $st->execute([$_SESSION['user_id']]);
         $row = $st->fetch();
         if ($row && (int)$row['is_active'] === 1) {
+            if (!array_key_exists('profile_picture', $row)) {
+                $row['profile_picture'] = null;
+            }
             $user = $row;
             $_SESSION['role'] = $row['role'];
             // Lets the database triggers record who made each change.
@@ -184,6 +196,17 @@ function currentUser(): ?array
         }
     }
     return $user;
+}
+
+/** Returns a safe relative URL to the user's uploaded profile picture if it exists on disk, or null. */
+function userAvatarUrl(?array $user): ?string
+{
+    $rel = (string)($user['profile_picture'] ?? '');
+    if ($rel === '' || !str_starts_with($rel, 'uploads/avatars/') || str_contains($rel, '..')) {
+        return null;
+    }
+    $full = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $rel);
+    return is_file($full) ? $rel : null;
 }
 
 function requireLogin(): array
@@ -223,15 +246,15 @@ function isLockedOut(string $identifier, string $ip): bool
     $pdo = db();
     $st = $pdo->prepare('SELECT COUNT(*) FROM login_attempts
                           WHERE success = 0 AND username = ? AND ip_address = ?
-                            AND attempted_at > DATE_SUB(NOW(), INTERVAL ' . LOCKOUT_MINUTES . ' MINUTE)');
-    $st->execute([$identifier, $ip]);
+                            AND attempted_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)');
+    $st->execute([$identifier, $ip, LOCKOUT_MINUTES]);
     if ((int)$st->fetchColumn() >= MAX_FAILED_LOGINS) {
         return true;
     }
     $st = $pdo->prepare('SELECT COUNT(*) FROM login_attempts
                           WHERE success = 0 AND ip_address = ?
-                            AND attempted_at > DATE_SUB(NOW(), INTERVAL ' . LOCKOUT_MINUTES . ' MINUTE)');
-    $st->execute([$ip]);
+                            AND attempted_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)');
+    $st->execute([$ip, LOCKOUT_MINUTES]);
     return (int)$st->fetchColumn() >= MAX_FAILED_PER_IP;
 }
 

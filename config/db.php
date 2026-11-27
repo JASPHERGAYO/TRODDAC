@@ -21,15 +21,21 @@ function db(): PDO
     if ($pdo === null) {
         $c = appConfig()['db'];
         try {
+            $charset = preg_match('/^[a-zA-Z0-9_]+$/', (string)$c['charset']) ? $c['charset'] : 'utf8mb4';
+            $port    = (int)$c['port'];
+            $options = [
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES   => false,
+            ];
+            if (defined('PDO::MYSQL_ATTR_MULTI_STATEMENTS')) {
+                $options[PDO::MYSQL_ATTR_MULTI_STATEMENTS] = false;
+            }
             $pdo = new PDO(
-                "mysql:host={$c['host']};port={$c['port']};dbname={$c['name']};charset={$c['charset']}",
+                "mysql:host={$c['host']};port={$port};dbname={$c['name']};charset={$charset}",
                 $c['user'],
                 $c['pass'],
-                [
-                    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    PDO::ATTR_EMULATE_PREPARES   => false,
-                ]
+                $options
             );
         } catch (PDOException $e) {
             http_response_code(500);
@@ -37,6 +43,12 @@ function db(): PDO
         }
     }
     return $pdo;
+}
+
+/** Escapes SQL LIKE wildcards (%, _, \) so user search strings match literally with ESCAPE '\\'. */
+function escapeLike(string $value): string
+{
+    return strtr($value, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']);
 }
 
 /** True when the error means the database structure is older than the code (a migration was not run). */

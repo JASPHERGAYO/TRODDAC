@@ -20,8 +20,8 @@ final class Bookings
         try {
             $minutes = max(1, (int)(appConfig()['booking_expiry_minutes'] ?? 15));
             $st = $pdo->prepare("UPDATE bookings SET status = 'rejected', cancel_reason = 'No driver accepted in time'
-                                  WHERE status = 'available' AND driver_id IS NULL AND requested_at < DATE_SUB(NOW(), INTERVAL $minutes MINUTE)");
-            $st->execute();
+                                  WHERE status = 'available' AND driver_id IS NULL AND requested_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)");
+            $st->execute([$minutes]);
             return $st->rowCount();
         } catch (PDOException $e) {
             error_log('TRODDAC expireStale: ' . $e->getMessage());
@@ -57,15 +57,16 @@ final class Bookings
     public static function availableFor(PDO $pdo, array $driver, int $limit = 20): array
     {
         $minutes = max(1, (int)(appConfig()['booking_expiry_minutes'] ?? 15));
-        $first = schemaHas('users', 'first_name') ? 'p.first_name' : "SUBSTRING_INDEX(p.full_name, ' ', 1)";
+        $maxRows = max(1, min(100, $limit));
+        $first   = schemaHas('users', 'first_name') ? 'p.first_name' : "SUBSTRING_INDEX(p.full_name, ' ', 1)";
         $st = $pdo->prepare("SELECT b.id, b.booking_code, b.pickup_label, b.pickup_latitude, b.pickup_longitude, b.dest_label, b.dest_latitude, b.dest_longitude,
                                     b.distance_km, b.est_duration_min, b.estimated_fare, b.passenger_count, b.notes, b.requested_at,
                                     TIMESTAMPDIFF(MINUTE, b.requested_at, NOW()) AS waiting_min, $first AS passenger_first
                                FROM bookings b JOIN users p ON p.id = b.passenger_id
-                              WHERE b.status = 'available' AND b.driver_id IS NULL AND b.requested_at >= DATE_SUB(NOW(), INTERVAL $minutes MINUTE)
+                              WHERE b.status = 'available' AND b.driver_id IS NULL AND b.requested_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
                                 AND NOT EXISTS (SELECT 1 FROM booking_declines x WHERE x.booking_id = b.id AND x.driver_id = ?)
-                              ORDER BY b.requested_at ASC, b.id ASC LIMIT " . (int)$limit);
-        $st->execute([$driver['id']]);
+                              ORDER BY b.requested_at ASC, b.id ASC LIMIT ?");
+        $st->execute([$minutes, (int)$driver['id'], $maxRows]);
         $out = [];
         foreach ($st->fetchAll() as $b) {
             $away = null;
