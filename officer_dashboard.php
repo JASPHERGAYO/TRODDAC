@@ -33,45 +33,45 @@ dashHeader('Officer Dashboard', 'officer_dashboard.php');
             <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('users') ?></span>Operators</div><div class="stat-body"><b><?= $counts['operator'] ?></b></div></div>
             <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('ticket') ?></span>Passengers</div><div class="stat-body"><b><?= $counts['passenger'] ?></b></div></div>
             <div class="stat-card glass"><div class="stat-top"><span class="chip"><?= icon('map') ?></span>Routes / terminals</div><div class="stat-body"><b><?= $routes ?> / <?= $terminals ?></b></div></div>
-            <a class="stat-card glass" href="#reports" style="text-decoration:none;color:inherit"><div class="stat-top"><span class="chip"><?= icon('flag') ?></span>Open reports</div><div class="stat-body"><b><?= $reportCounts['new'] + $reportCounts['in_review'] ?></b></div><span class="trend"><?= $reportCounts['new'] ?> new</span></a>
+            <a class="stat-card glass<?= $reportCounts['new'] > 0 ? ' attn' : '' ?>" href="#reports"><div class="stat-top"><span class="chip"><?= icon('flag') ?></span>Open reports</div><div class="stat-body"><b><?= $reportCounts['new'] + $reportCounts['in_review'] ?></b><span class="trend"><?= $reportCounts['new'] ?> new</span></div></a>
         </div>
         <div class="row two">
             <div class="panel glass">
                 <h3>Active fare rate</h3>
                 <?php if ($fare): ?>
-                    <p class="note"><b><?= e($fare['name']) ?></b><br><span style="font-size:1.4rem;color:var(--accent)"><b>&#8369;<?= e($fare['per_km_rate']) ?></b></span> per km
-                        <?php if ((float)$fare['base_fare'] > 0): ?><br>Starting fare &#8369;<?= e($fare['base_fare']) ?> covers the first <?= e(rtrim(rtrim((string)$fare['base_distance_km'], '0'), '.')) ?> km.<?php endif; ?>
-                        <br>Minimum fare &#8369;<?= e($fare['minimum_fare']) ?>.</p>
+                    <p class="note"><b><?= e($fare['name']) ?></b></p>
+                    <p class="fare-rate"><b>&#8369;<?= e($fare['per_km_rate']) ?></b> per km</p>
+                    <p class="note"><?php if ((float)$fare['base_fare'] > 0): ?>Starting fare &#8369;<?= e($fare['base_fare']) ?> covers the first <?= e(rtrim(rtrim((string)$fare['base_distance_km'], '0'), '.')) ?> km.<br><?php endif; ?>Minimum fare &#8369;<?= e($fare['minimum_fare']) ?>.</p>
                 <?php else: ?>
                     <p class="note">No fare rate is active. Passengers cannot book until one is activated.</p>
                 <?php endif; ?>
-                <p style="margin:10px 0 0"><a class="small-btn" style="text-decoration:none;display:inline-flex" href="officer_fares.php">Manage fare rates</a></p>
+                <p class="panel-foot"><a class="small-btn ghost" href="officer_fares.php">Manage fare rates</a></p>
             </div>
             <div class="panel glass">
                 <h3>Accounts</h3>
                 <p class="note">Add drivers and operators, disable access or reset passwords.</p>
-                <p><a class="small-btn" style="text-decoration:none;display:inline-block;margin-top:10px" href="officer_users.php">Manage users</a></p>
+                <p class="panel-foot"><a class="small-btn ghost" href="officer_users.php">Manage users</a></p>
             </div>
         </div>
         <div class="panel glass" id="reports">
-            <div class="head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-                <h3 style="margin:0">Passenger reports</h3>
+            <div class="panel-head">
+                <h3>Passenger reports</h3>
                 <?php if ($hasReports): ?><span class="pill pending"><?= $reportCounts['new'] ?> new</span><?php endif; ?>
             </div>
             <?php if (!$hasReports): ?>
                 <p class="note"><?= e(SCHEMA_HELP) ?></p>
             <?php else: ?>
-                <div class="list" style="margin-top:10px">
+                <div class="list">
                     <?php foreach ($latestReports as $r): ?>
-                        <a class="item" href="officer_reports.php" style="text-decoration:none;color:inherit">
+                        <a class="item" href="officer_reports.php">
                             <div class="head"><span class="mono"><?= e($r['report_code']) ?></span><span class="pill <?= $r['status'] === 'new' ? 'pending' : 'assigned' ?>"><?= $r['status'] === 'new' ? 'New' : 'In review' ?></span></div>
                             <div class="route"><b><?= e($r['subject']) ?></b></div>
-                            <div class="meta"><?= e($r['full_name']) ?> &middot; <?= e(substr($r['created_at'], 0, 16)) ?></div>
+                            <div class="meta"><?= e($r['full_name']) ?> &middot; <?= timeTag($r['created_at']) ?></div>
                         </a>
                     <?php endforeach; ?>
                     <?php if (!$latestReports): ?><div class="empty">No open reports. Nice and quiet.</div><?php endif; ?>
                 </div>
-                <p style="margin:12px 0 0"><a href="officer_reports.php">Open all reports (<?= $reportCounts['new'] + $reportCounts['in_review'] ?> open)</a></p>
+                <p class="panel-foot"><a href="officer_reports.php">Open all reports (<?= $reportCounts['new'] + $reportCounts['in_review'] ?> open)</a></p>
             <?php endif; ?>
         </div>
 <?php dashFooter();

@@ -26,7 +26,7 @@ if (!$st->fetchColumn()) {
 dashHeader('My trip', 'passenger_history.php', ['maps' => true]);
 ?>
         <div class="panel glass">
-            <div class="item head" style="background:none;padding:0">
+            <div class="head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
                 <h3 style="margin:0">Trip <span id="code" class="mono"></span></h3>
                 <span id="status-pill" class="pill">Loading</span>
             </div>

@@ -35,65 +35,127 @@ function roleNav(string $role): array
     return $items;
 }
 
+/** Human-friendly date/time: "Today · 8:07 PM", "Yesterday · 9:15 AM", "Nov 25 · 8:07 PM", "Nov 25, 2025 · 8:07 PM". */
+function friendlyTime(?string $dt): string
+{
+    if (!$dt) {
+        return '';
+    }
+    try {
+        $t = new DateTimeImmutable($dt);
+    } catch (Exception) {
+        return $dt;
+    }
+    $today = new DateTimeImmutable('today');
+    $day   = $t->setTime(0, 0);
+    $clock = $t->format('g:i A');
+    if ($day == $today) {
+        return 'Today · ' . $clock;
+    }
+    if ($day == $today->modify('-1 day')) {
+        return 'Yesterday · ' . $clock;
+    }
+    return $t->format($t->format('Y') === $today->format('Y') ? 'M j' : 'M j, Y') . ' · ' . $clock;
+}
+
+/** <time> element with a friendly label and the exact timestamp on hover. */
+function timeTag(?string $dt): string
+{
+    return $dt ? '<time datetime="' . e(str_replace(' ', 'T', $dt)) . '" title="' . e($dt) . '">' . e(friendlyTime($dt)) . '</time>' : '';
+}
+
+/** Pickup → drop-off as a two-stop line. */
+function routeStops(string $from, string $to): string
+{
+    return '<span class="stops"><span class="stop from">' . e($from) . '</span><span class="stop to">' . e($to) . '</span></span>';
+}
+
 /** $opts: 'maps' => true loads Leaflet's stylesheet for pages with a map. */
 function dashHeader(string $title, string $activeHref, array $opts = []): void
 {
-    $user     = currentUser();
-    $role     = $user['role'];
-    $name     = e($user['full_name']);
-    $initial  = e(strtoupper(firstChar($user['full_name'])));
-    $roleName = e(ROLE_LABEL[$role] ?? $role);
+    $user        = currentUser();
+    $role        = $user['role'];
+    $name        = e($user['full_name']);
+    $initial     = e(strtoupper(firstChar($user['full_name'])));
+    $roleName    = e(ROLE_LABEL[$role] ?? $role);
+    $portalTitle = e((ROLE_LABEL[$role] ?? ucfirst($role)) . ' Portal');
     ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#dbe8fb">
+    <meta name="theme-color" content="#0b6b23">
     <meta name="csrf-token" content="<?= e(csrfToken()) ?>">
     <title><?= e($title) ?> - TRODDAC</title>
+    <link rel="icon" type="image/png" href="logo/logo.png">
+    <link rel="preload" href="assets/fonts/public-sans-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="assets/css/style.css">
     <?php if (!empty($opts['maps'])): ?><link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css"><?php endif; ?>
     <link rel="stylesheet" href="assets/css/dashboard.css">
 </head>
 <body class="dash role-<?= e($role) ?>">
 <div class="app">
-    <header class="topbar">
-        <div class="logo"><span class="logo-mark"><?= icon('shield') ?></span><span>TRODDAC</span></div>
-        <div class="who">
-            <span class="name"><?= $name ?></span>
-            <form method="post" action="logout.php" class="logout-form"><?= csrfField() ?><button type="submit" aria-label="Log out" title="Log out"><?= icon('logout') ?></button></form>
-        </div>
-    </header>
     <nav class="sidebar" aria-label="Main">
-        <div class="logo"><span class="logo-mark"><?= icon('shield') ?></span><span>TRODDAC</span></div>
+        <div class="side-brand">
+            <img src="logo/logo.png" alt="TRODDAC Seal" class="logo-seal lg">
+            <div class="side-brand-text">
+                <strong>TRODDAC</strong>
+                <span class="portal-name"><?= $portalTitle ?></span>
+            </div>
+        </div>
         <p class="side-label">Menu</p>
         <div class="side-nav">
             <?php foreach (roleNav($role) as [$label, $ico, $href]): ?>
-                <a href="<?= e($href) ?>" class="<?= $href === $activeHref ? 'active' : '' ?>"><?= icon($ico) ?><span><?= e($label) ?></span></a>
+                <a href="<?= e($href) ?>" class="<?= $href === $activeHref ? 'active' : '' ?>"<?= $href === $activeHref ? ' aria-current="page"' : '' ?>><?= icon($ico) ?><span><?= e($label) ?></span></a>
             <?php endforeach; ?>
         </div>
         <div class="side-user">
-            <div class="avatar sm"><?= $initial ?></div>
-            <div><b><?= $name ?></b><small><?= $roleName ?></small></div>
-            <form method="post" action="logout.php" class="logout-form"><?= csrfField() ?><button type="submit" aria-label="Log out" title="Log out"><?= icon('logout') ?></button></form>
+            <div class="avatar sm" aria-hidden="true"><?= $initial ?></div>
+            <div class="side-user-text"><b><?= $name ?></b><small><?= $roleName ?></small></div>
+            <form method="post" action="logout.php" class="logout-form side-logout">
+                <?= csrfField() ?>
+                <button type="submit" class="btn-logout" aria-label="Log out" title="Log out"><?= icon('logout') ?></button>
+            </form>
         </div>
     </nav>
-    <main class="main">
-        <?php
-        // Warn when the code is newer than the database (a migration has not been run).
-        if (empty($_SESSION['schema_check']) || time() - (int)$_SESSION['schema_check']['at'] > 60) {
-            $_SESSION['schema_check'] = ['at' => time(), 'pending' => pendingMigrations()];
-        }
-        $pendingDb = $_SESSION['schema_check']['pending'];
-        if ($pendingDb): ?>
-            <div class="flash error glass" role="alert"><?= $role === 'officer' || $role === 'operator'
-                ? 'Database update needed (' . count($pendingDb) . ' pending). Run: php database\\migrate.php migrate'
-                : 'The system is being updated. Some features may not work yet.' ?></div>
-        <?php endif; ?>
-        <?php foreach (takeFlashes() as $f): ?>
-            <div class="flash <?= e($f['type']) ?> glass" role="status"><?= e($f['message']) ?></div>
-        <?php endforeach; ?>
+
+    <div class="workspace">
+        <header class="topbar">
+            <div class="logo">
+                <img src="logo/logo.png" alt="TRODDAC Seal" class="logo-seal">
+                <div class="logo-text">
+                    <strong>TRODDAC</strong>
+                    <small>Dasmari&ntilde;as City Tricycle Association</small>
+                </div>
+            </div>
+            <div class="page-id">
+                <span class="crumb"><?= $portalTitle ?></span>
+                <h1 class="page-title"><?= e($title) ?></h1>
+            </div>
+            <div class="who">
+                <span class="top-date"><?= e(date('D, M j')) ?></span>
+                <span class="role-tag"><?= $roleName ?></span>
+                <span class="avatar sm" title="<?= $name ?>" aria-hidden="true"><?= $initial ?></span>
+                <form method="post" action="logout.php" class="logout-form mobile-logout"><?= csrfField() ?><button type="submit" aria-label="Log out" title="Log out"><?= icon('logout') ?></button></form>
+            </div>
+        </header>
+
+        <main class="main">
+            <?php
+            // Warn when the code is newer than the database (a migration has not been run).
+            if (empty($_SESSION['schema_check']) || time() - (int)$_SESSION['schema_check']['at'] > 60) {
+                $_SESSION['schema_check'] = ['at' => time(), 'pending' => pendingMigrations()];
+            }
+            $pendingDb = $_SESSION['schema_check']['pending'];
+            if ($pendingDb): ?>
+                <div class="flash error glass" role="alert"><?= $role === 'officer' || $role === 'operator'
+                    ? 'Database update needed (' . count($pendingDb) . ' pending). Run: php database\\migrate.php migrate'
+                    : 'The system is being updated. Some features may not work yet.' ?></div>
+            <?php endif; ?>
+            <?php foreach (takeFlashes() as $f): ?>
+                <div class="flash <?= e($f['type']) ?> glass" role="status"><?= e($f['message']) ?></div>
+            <?php endforeach; ?>
 <?php
 }
 
@@ -115,7 +177,7 @@ function dashFooter(array $scripts = [], array $boot = [], bool $maps = false): 
             'radiusKm'    => $cfg['service_area']['radius_km'],
         ],
     ];
-    echo "    </main>\n</div>\n";
+    echo "        </main>\n    </div>\n</div>\n";
     echo '<script type="application/json" id="boot">' . json_encode($boot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) . "</script>\n";
     echo '<script src="assets/js/boot.js"></script>' . "\n";
     if ($maps) {

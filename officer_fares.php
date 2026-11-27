@@ -146,14 +146,17 @@ dashHeader('Fare rates', 'officer_fares.php');
 ?>
         <div class="greet"><h2>Fare rates (per kilometre)</h2><p>Fare = starting fare + rate per km for each km beyond the starting distance, never below the minimum fare.</p></div>
 
-        <div class="panel glass" style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap">
-            <div><b>Set the price per kilometre</b><div class="hint" style="margin:0">Only one rate is active at a time. Passengers see the active rate when they book.</div></div>
+        <div class="panel glass cta-panel">
+            <div class="cta-lead">
+                <span class="cta-ico"><?= icon('coin') ?></span>
+                <div><b>Set the price per kilometre</b><div class="hint" style="margin:0">Only one rate is active at a time. Passengers see the active rate when they book.</div></div>
+            </div>
             <button type="button" class="btn" id="new-fare">Add fare rate</button>
         </div>
 
         <div class="user-grid">
             <?php foreach ($rows as $m): $active = (int)$m['is_active'] === 1; $used = (int)$m['used']; ?>
-                <article class="item user-card">
+                <article class="item user-card<?= $active ? ' card-active' : '' ?>">
                     <div class="head"><b><?= e($m['name']) ?></b><span class="pill <?= $active ? 'completed' : 'off' ?>"><?= $active ? 'Active' : 'Not active' ?></span></div>
                     <div class="fare-rate"><b><?= $peso($m['per_km_rate']) ?></b> <span>per km</span></div>
                     <dl class="kv compact">

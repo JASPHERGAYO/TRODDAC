@@ -13,9 +13,12 @@ $board   = $pdo->query('SELECT driver_name, availability, default_unit_plate, ac
 
 dashHeader('Operator Dashboard', 'operator_dashboard.php');
 ?>
-        <div class="greet"><h2>Hello, <?= e($user['full_name']) ?></h2><p>Monitoring overview.</p></div>
-        <div class="panel glass" style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap">
-            <div><b><?= $pending ?> open booking(s) waiting for a driver</b><div class="hint" style="margin:0">Online drivers accept bookings themselves. You can follow every trip here.</div></div>
+        <div class="greet"><div><h2>Hello, <?= e($user['full_name']) ?></h2><p>Monitoring overview.</p></div></div>
+        <div class="panel glass cta-panel">
+            <div class="cta-lead">
+                <span class="cta-ico"><?= icon('map') ?></span>
+                <div><b><?= $pending ?> open booking(s) waiting for a driver</b><div class="hint" style="margin:0">Online drivers accept bookings themselves. You can follow every trip here.</div></div>
+            </div>
             <a class="btn" href="operator_trips.php">View trips</a>
         </div>
         <div class="row stats">
